@@ -4,8 +4,16 @@ import { normalize, viewJob, rowsFor } from './normalize.js';
 import { hash } from './storage.js';
 
 const terminal=new Set(['SUCCEEDED','FAILED','ABORTED','TIMED-OUT']);
+const done=r=>terminal.has(r.status)||(r.status==='START_UNCERTAIN'&&!r.runId);
+// Apify statuses that mean "this key can't run right now" (revoked, out of credit, plan/actor limit, rate limit) -> try the next key.
+const rotate=new Set([401,402,403,429]);
+// Keep stored snapshots well under Apify's key-value record size limit.
+const compact=row=>({...row,description:row.description?.slice(0,4000)??null,reviews:row.reviews.slice(0,10)});
+
 export class HostedResearch {
-  constructor(apify,{maxCharge=0.5}={}) {this.apify=apify;this.maxCharge=maxCharge;}
+  constructor(apify,{maxCharge=1.5}={}) {this.apify=apify;this.maxCharge=maxCharge;}
+  accounts(w) {return w.accounts?.length?w.accounts:[{token:w.token,userId:w.userId}];}
+  // ponytail: job storage lives on the FIRST key's Apify account; if that account is blocked, storage fails too.
   path(w,key) {return `/key-value-stores/${encodeURIComponent(w.storeId)}/records/${encodeURIComponent(key)}`;}
   async get(w,key,optional=false) {
     try {return await this.apify.request(this.path(w,key),w.token);}
@@ -15,11 +23,29 @@ export class HostedResearch {
   async job(w,id) {
     const j=await this.get(w,'job-'+id);
     if(!j || j.owner!==w.owner) throw new Error('Research job not found in this workspace.');
+    j.runs??=[{adapter:j.adapter,actor:j.actor,runId:j.runId,datasetId:j.datasetId,status:j.status,a:0}];
     return j;
   }
+  runInfo(j) {return j.runs.map(r=>({actor:r.actor,status:r.status,apify_key:r.a+1,...(r.error?{error:r.error}:{})}));}
   result(j,view,args={}) {
-    if(!j.rows) return {job_id:j.id,status:j.status,actor:j.actor,next_step:'Poll get_research_job with this job_id. Do not start a new run to poll.'};
-    return {...viewJob(j,view,args.username,args.offset||0,args.limit||10),partial_results:j.status!=='SUCCEEDED'};
+    if(!j.rows) return {job_id:j.id,status:j.status,actors:this.runInfo(j),next_step:'Poll get_research_job with this job_id. Do not start a new run to poll.'};
+    return {...viewJob(j,view,args.username,args.offset||0,args.limit||10),actors:this.runInfo(j),partial_results:j.status!=='SUCCEEDED'};
+  }
+  // Start one Actor, moving to the next Apify key when a key is refused.
+  async startRun(w,adapter,input) {
+    const accounts=this.accounts(w),r={adapter,actor:ACTORS[adapter].id,status:'STARTING'};
+    let last;
+    for(let a=0;a<accounts.length;a++) {
+      try {
+        const run=await this.apify.start(adapter,input,accounts[a].token,this.maxCharge);
+        return {...r,a,runId:run.id,datasetId:run.defaultDatasetId,status:run.status};
+      } catch(e) {
+        last=e;
+        if(!e.status) return {...r,a,status:'START_UNCERTAIN',error:'Network failure while starting; check Apify Console before retrying.'};
+        if(!rotate.has(e.status)) break;
+      }
+    }
+    return {...r,status:'FAILED',error:`All ${accounts.length} Apify key(s) refused this scraper (last HTTP ${last?.status}). Check balance/plan.`};
   }
   async request(w,mode,args,view) {
     if(args.job_id) {
@@ -27,54 +53,78 @@ export class HostedResearch {
       if(mode==='seller' ? j.username!==args.username&&!rowsFor(j,args.username).length : j.mode!==mode) throw new Error('Job does not match requested seller or research scope.');
       return this.result(j,view,args);
     }
-    const adapter=args.adapter||'memo23',input=actorInput(adapter,mode,args);
-    // Inspect BEFORE reserving/starting a paid job. Catalog inspection starts no run.
-    if(!this.apify.schemaCache.has(adapter))await this.apify.inspect(adapter);
-    const fingerprint=hash(JSON.stringify([adapter,input]));
+    // Searches run every Fiverr scraper in parallel unless one is named; other lookups use one.
+    const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):['memo23'];
+    const inputs=adapters.map(ad=>actorInput(ad,mode,args));
+    for(const ad of adapters) if(!this.apify.schemaCache.has(ad))await this.apify.inspect(ad);
+    const fingerprint=hash(JSON.stringify([adapters,inputs]));
     const cached=await this.get(w,'query-'+fingerprint,true);
     if(cached && Date.now()-Date.parse(cached.createdAt)<3600000) {
       const j=await this.job(w,cached.id);
-      if(!['FAILED','TIMED-OUT','ABORTED'].includes(j.status)) return this.result(j,view,args);
+      if(j.runs.some(r=>!['FAILED','TIMED-OUT','ABORTED'].includes(r.status))) return this.result(j,view,args);
     }
-    const j={id:randomUUID(),owner:w.owner,mode,username:args.username,query:mode==='search'?args.buyer_need:undefined,adapter,actor:ACTORS[adapter].id,status:'STARTING',createdAt:new Date().toISOString(),limit:Math.min(args.limit||10,50)};
+    const j={id:randomUUID(),owner:w.owner,mode,username:args.username,query:mode==='search'?args.buyer_need:undefined,status:'STARTING',createdAt:new Date().toISOString(),
+      limit:mode==='search'&&args.pages?args.pages*48:Math.min(args.limit||10,50),runs:adapters.map(ad=>({adapter:ad,actor:ACTORS[ad].id,status:'STARTING'}))};
     await this.put(w,'job-'+j.id,j);
     await this.put(w,'query-'+fingerprint,{id:j.id,createdAt:j.createdAt});
-    try {
-      const run=await this.apify.start(adapter,input,w.token,this.maxCharge);
-      j.runId=run.id;j.datasetId=run.defaultDatasetId;j.status=run.status;
-      await this.put(w,'job-'+j.id,j);
-      return this.result(j,view,args);
-    } catch(e) {
-      j.status='START_UNCERTAIN';
-      try{await this.put(w,'job-'+j.id,j);}catch{}
+    j.runs=await Promise.all(adapters.map((ad,i)=>this.startRun(w,ad,inputs[i])));
+    j.status=j.runs.every(r=>r.status==='FAILED')?'FAILED':'RUNNING';
+    await this.put(w,'job-'+j.id,j);
+    if(j.status==='FAILED') throw new Error(`No scraper could start. ${j.runs.map(r=>r.error).join(' ')}`);
+    if(j.runs.some(r=>r.status==='START_UNCERTAIN')&&j.runs.every(r=>r.status==='START_UNCERTAIN'||r.status==='FAILED'))
       throw new Error(`Research job ${j.id} has an uncertain start. Check Apify Console before retrying; use recover_research_job to avoid duplicate charges.`);
-    }
+    return this.result(j,view,args);
   }
   async poll(w,id) {
-    const j=await this.job(w,id);
+    const j=await this.job(w,id),accounts=this.accounts(w);
     if(j.rows)return {...this.result(j,'gigs'),research_complete:j.status==='SUCCEEDED'};
-    if(!j.runId)return this.result(j,'gigs');
-    const run=await this.apify.poll(j.runId,w.token);
-    if(run.userId && run.userId!==w.userId) throw new Error('Run ownership mismatch.');
-    j.status=run.status;j.datasetId=run.defaultDatasetId||j.datasetId;
-    if(terminal.has(j.status)) {
-      const rows=j.datasetId?await this.apify.items(j.datasetId,w.token,0,j.limit):[];
-      j.rows=rows.map(normalize);j.collectedAt=new Date().toISOString();
+    for(const r of j.runs) {
+      if(done(r)||!r.runId) continue;
+      const acc=accounts[r.a]||accounts[0];
+      const run=await this.apify.poll(r.runId,acc.token);
+      if(run.userId && run.userId!==acc.userId) throw new Error('Run ownership mismatch.');
+      r.status=run.status;r.datasetId=run.defaultDatasetId||r.datasetId;
     }
+    if(j.runs.every(done)) {
+      // Merge all scrapers' rows; same gig URL from several scrapers fills in each other's gaps (e.g. tags).
+      const merged=new Map(),loose=[];
+      for(const r of j.runs) {
+        if(!r.datasetId) continue;
+        const acc=accounts[r.a]||accounts[0];
+        for(const raw of await this.apify.items(r.datasetId,acc.token,0,j.limit)) {
+          const row=compact({...normalize(raw),source_actor:r.actor});
+          const prev=row.source_url&&merged.get(row.source_url);
+          if(!row.source_url) loose.push(row);
+          else if(!prev) merged.set(row.source_url,row);
+          else for(const [k,v] of Object.entries(row)) if(prev[k]==null||(Array.isArray(prev[k])&&!prev[k].length)) prev[k]=v;
+        }
+      }
+      j.rows=[...merged.values(),...loose];j.collectedAt=new Date().toISOString();
+      j.status=j.runs.every(r=>r.status==='SUCCEEDED')?'SUCCEEDED':j.runs.some(r=>r.status==='SUCCEEDED')?'PARTIAL':'FAILED';
+    } else j.status='RUNNING';
     await this.put(w,'job-'+j.id,j);
-    return {...this.result(j,'gigs'),research_complete:j.status==='SUCCEEDED'};
+    return {...this.result(j,'gigs'),research_complete:j.status==='SUCCEEDED'||j.status==='PARTIAL'};
   }
   async recover(w,id,runId,confirmedNotStarted) {
-    const j=await this.job(w,id);
-    if(!['STARTING','START_UNCERTAIN'].includes(j.status))throw new Error('Only uncertain starts can be recovered.');
+    const j=await this.job(w,id),accounts=this.accounts(w);
+    const open=j.runs.filter(r=>['STARTING','START_UNCERTAIN'].includes(r.status));
+    if(!open.length)throw new Error('Only uncertain starts can be recovered.');
     if(runId) {
-      const run=await this.apify.poll(runId,w.token);
-      const actor=await this.apify.request(`/acts/${j.actor.replace('/','~')}`,w.token);
-      if(run.actId!==actor.data.id || run.userId!==w.userId)throw new Error('Recovery run must belong to this account and the same Actor.');
-      j.runId=run.id;j.datasetId=run.defaultDatasetId;j.status=run.status;
-    } else if(confirmedNotStarted)j.status='FAILED';
+      let found;
+      for(let a=0;a<accounts.length&&!found;a++) {
+        try {
+          const run=await this.apify.poll(runId,accounts[a].token);
+          for(const r of open) {
+            const actor=await this.apify.request(`/acts/${r.actor.replace('/','~')}`,accounts[a].token);
+            if(run.actId===actor.data.id&&run.userId===accounts[a].userId){found=Object.assign(r,{a,runId:run.id,datasetId:run.defaultDatasetId,status:run.status});break;}
+          }
+        } catch {}
+      }
+      if(!found)throw new Error('Recovery run must belong to one of this workspace\'s Apify accounts and an uncertain Actor.');
+    } else if(confirmedNotStarted) open.forEach(r=>r.status='FAILED');
     else throw new Error('Provide a matching run_id or confirm no run was started.');
-    await this.put(w,'job-'+j.id,j);return {job_id:id,status:j.status};
+    j.status='RUNNING';
+    await this.put(w,'job-'+j.id,j);return {job_id:id,status:j.status,actors:this.runInfo(j)};
   }
   async listJobs(w) {
     const records=await this.apify.request(`/key-value-stores/${encodeURIComponent(w.storeId)}/keys?limit=1000`,w.token);
@@ -83,7 +133,7 @@ export class HostedResearch {
     // Bound fan-out to avoid overloading the seller's API.
     for(let i=0;i<keys.length;i+=5) {
       const batch=await Promise.all(keys.slice(i,i+5).map(k=>this.get(w,k.key)));
-      jobs.push(...batch.filter(j=>j.owner===w.owner).map(j=>({job_id:j.id,status:j.status,actor:j.actor,username:j.username,buyer_need:j.query,created_at:j.createdAt})));
+      jobs.push(...batch.filter(j=>j.owner===w.owner).map(j=>({job_id:j.id,status:j.status,actors:(j.runs||[{actor:j.actor}]).map(r=>r.actor),username:j.username,buyer_need:j.query,created_at:j.createdAt})));
     }
     jobs.sort((a,b)=>b.created_at.localeCompare(a.created_at));
     return {jobs,truncated:!!records.data.isTruncated||records.data.items.filter(x=>x.key.startsWith('job-')).length>50,note:'Bounded history view. Keep job IDs to resume older research.'};

@@ -10,7 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 function mockApify(){
   const records=new Map(),calls=[];
-  return {records,calls,schemaCache:new Map([['memo23',{}]]),
+  return {records,calls,schemaCache:new Map([['memo23',{}],['logiover',{}],['dionysus',{}]]),
     async request(path,token,options={}) {
       calls.push({path,token,options});
       if(path==='/users/me')return {data:{id:token,username:'seller'}};
@@ -20,7 +20,7 @@ function mockApify(){
       if(records.has(scoped))return structuredClone(records.get(scoped));
       const e=new Error('not found');e.status=404;throw e;
     },
-    async start(adapter,input,token){calls.push({paid:true,adapter,input,token});return {id:'run123',status:'RUNNING',defaultDatasetId:'dataset123'};},
+    async start(adapter,input,token){calls.push({paid:true,adapter,input,token});if(token.startsWith('broke')){const e=new Error('no credit');e.status=402;throw e;}return {id:'run123',status:'RUNNING',defaultDatasetId:'dataset123'};},
     async poll(id,token){return {id,userId:token,status:'SUCCEEDED',defaultDatasetId:'dataset123'};},
     async items(id,token){return [{rowType:'gig',sellerName:'seller',gigUrl:'https://www.fiverr.com/seller/example',title:'Example',description:'Public research evidence'}];}
   };
@@ -41,7 +41,7 @@ test('hosted jobs persist across instances without mixing sellers or saving toke
   const started=await first.request(w,'search',args,'gigs');
   const next=new HostedResearch(api);
   assert.equal((await next.request(w,'search',args,'gigs')).job_id,started.job_id);
-  assert.equal(api.calls.filter(c=>c.paid).length,1);
+  assert.equal(api.calls.filter(c=>c.paid).length,3); // all three scrapers, once
   assert.equal((await next.poll(w,started.job_id)).research_complete,true);
   const foreign={owner:'owner-b',token:'account-b',storeId:'store-b'};
   await assert.rejects(()=>next.job(foreign,started.job_id));
@@ -64,4 +64,15 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const polled=await client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
   assert.equal(polled.structuredContent.result.research_complete,true);
   assert.equal(api.calls.filter(c=>c.paid)[0].token,'apify_api_test123456789');
+});
+
+test('search runs every scraper, merges duplicates, and moves to the next key when one is out of credit',async()=>{
+  const api=mockApify(),r=new HostedResearch(api);
+  const w={owner:'o',token:'broke-a',userId:'broke-a',storeId:'s',accounts:[{token:'broke-a',userId:'broke-a'},{token:'good-b',userId:'good-b'}]};
+  const started=await r.request(w,'search',{buyer_need:'ai music video',pages:5},'gigs');
+  assert.deepEqual(started.actors.map(a=>[a.status,a.apify_key]),[['RUNNING',2],['RUNNING',2],['RUNNING',2]]);
+  assert.equal(api.calls.find(c=>c.paid&&c.adapter==='memo23').input.maxItems,240);
+  const done=await r.poll(w,started.job_id);
+  assert.equal(done.research_complete,true);
+  assert.equal(done.total_in_snapshot,1); // same gig URL from 3 scrapers merged
 });

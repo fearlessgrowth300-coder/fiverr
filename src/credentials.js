@@ -12,7 +12,7 @@ export class Credentials {
   }
   read(value, now=Date.now()) {
     try {
-      if(!value.startsWith('fgs1.')||value.length>2048) throw new Error();
+      if(!value.startsWith('fgs1.')||value.length>8192) throw new Error();
       const buf=Buffer.from(value.slice(5),'base64url');
       const decipher=createDecipheriv('aes-256-gcm',this.key,buf.subarray(0,12));
       decipher.setAAD(Buffer.from('fiverr-gig-studio:v1'));decipher.setAuthTag(buf.subarray(12,28));

@@ -6,7 +6,7 @@ import { fiverrUrl } from './normalize.js';
 import { gigSchema, validateGig, renderGig } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
 
-const workspace_key = z.string().min(24).max(2048).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
+const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
 const username = z.string().regex(/^[A-Za-z0-9_]{2,60}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
 const adapter = z.enum(['memo23','logiover','dionysus']).default('memo23');
 const pagination = { job_id: z.string().uuid().optional(), offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(50).default(10) };
@@ -33,8 +33,12 @@ export function createServer({ workspaces, research, apify, authenticate }) {
 
   tool('inspect_research_actor', 'Read the current schema, documented coverage and limitations for an executable Apify adapter. No paid run.', { workspace_key, adapter }, async args => { auth(args); return apify.inspect(args.adapter); }, { external: true });
 
-  tool('find_freelancers', 'Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Use only the buyer-worded need for THIS service. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
-    workspace_key, buyer_need: z.string().trim().min(3).max(300), adapter, ...pagination,
+  tool('find_freelancers', 'Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Send 2-5 search keywords a buyer would type (e.g. "ai music video"), never a sentence. Collects Fiverr search pages 1-5 by default; read results 10-50 at a time with job_id+offset until has_next_page=false. If 0 gigs come back, retry with shorter or different keywords before using anything else. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
+    workspace_key,
+    buyer_need: z.string().trim().min(3).max(60).refine(v => v.split(/s+/).length <= 5, 'Use 2-5 short keywords exactly as a buyer would type them into the Fiverr search bar, e.g. "ai music video" — not a sentence.').describe('2-5 keywords a buyer types into the Fiverr search bar, e.g. "ai music video", "logo design". NEVER a full sentence: long sentences return 0 gigs.'),
+    pages: z.number().int().min(1).max(5).default(5).describe('How many Fiverr search result pages to collect (~48 gigs each). Default 5 = pages 1-5.'),
+    adapter: z.enum(['memo23','logiover','dionysus']).optional().describe('Leave empty to run ALL Fiverr scrapers in parallel and merge results (most gigs). Name one only to re-check a single source.'),
+    ...pagination,
   }, args => research.request(auth(args), 'search', args, 'gigs'), { paid: true, external: true });
 
   const sellerTools = [

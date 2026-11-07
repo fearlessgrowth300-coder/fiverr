@@ -112,3 +112,8 @@ test('MCP discovery, workflow, validation, and research work through official cl
   const start=await client.callTool({name:'find_freelancers',arguments:{workspace_key:key,buyer_need:'logo design'}});assert.equal(start.structuredContent.result.status,'RUNNING');
   const final=await client.callTool({name:'finalize_gig_package',arguments:{workspace_key:key,gig:fixtureGig()}});assert.equal(final.structuredContent.result.valid,true);assert.ok(final.structuredContent.result.markdown.includes('## Buyer requirements'));
 });
+
+test('search collects Fiverr pages 1-5 (~48 gigs each)',()=>{
+  assert.equal(actorInput('memo23','search',{buyer_need:'ai music video',pages:5,limit:10}).maxItems,240);
+  assert.equal(actorInput('logiover','search',{buyer_need:'ai music video',pages:2}).maxResults,96);
+});

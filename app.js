@@ -25,16 +25,22 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
   app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:15}));
   app.get('/health',(_req,res)=>res.json({ok:true,service:'fiverr-gig-studio',configured:!!secret}));
   app.post('/api/connect',sameOrigin,async(req,res)=>{
-    const token=req.body?.apify_token;
-    if(typeof token!=='string'||!/^apify_api_[A-Za-z0-9_-]{10,200}$/.test(token))return res.status(400).json({error:'Enter a valid Apify API token.'});
+    const raw=req.body?.apify_tokens??[req.body?.apify_token];
+    const tokens=[...new Set(Array.isArray(raw)?raw.map(t=>typeof t==='string'?t.trim():t).filter(Boolean):[])];
+    if(!tokens.length||tokens.length>10||!tokens.every(t=>typeof t==='string'&&/^apify_api_[A-Za-z0-9_-]{10,200}$/.test(t)))return res.status(400).json({error:'Enter 1-10 valid Apify API tokens, one per line.'});
     if(req.body?.consent!==true)return res.status(400).json({error:'Consent is required to connect your Apify account.'});
     try {
       const c=creds();
-      const me=await apify.request('/users/me',token);
-      if(!me.data?.id)throw new Error('Could not verify this Apify account.');
-      const store=await apify.request('/key-value-stores?name=fiverr-gig-studio',token,{method:'POST'});
-      const key=c.issue({token,userId:me.data.id,storeId:store.data.id});
-      res.json({workspace_key:key,expires_in_days:90,account:me.data.username||'Connected account'});
+      const accounts=[];
+      for(const [i,token] of tokens.entries()) {
+        const me=await apify.request('/users/me',token).catch(e=>{throw Object.assign(new Error(`Apify key ${i+1} could not be verified (HTTP ${e.status||'network'}).`),{status:e.status});});
+        if(!me.data?.id)throw new Error(`Could not verify Apify key ${i+1}.`);
+        accounts.push({token,userId:me.data.id,username:me.data.username});
+      }
+      // Research history is stored on the first key's account; the others are used for runs when earlier keys run out.
+      const store=await apify.request('/key-value-stores?name=fiverr-gig-studio',accounts[0].token,{method:'POST'});
+      const key=c.issue({token:accounts[0].token,userId:accounts[0].userId,storeId:store.data.id,accounts:accounts.map(({token,userId})=>({token,userId}))});
+      res.json({workspace_key:key,expires_in_days:90,account:accounts.map(a=>a.username||'account').join(', '),keys:accounts.length});
     }catch(e){res.status(e.status===401?401:400).json({error:e.message.startsWith('WORKSPACE_')?'Workspace setup is not enabled yet. Contact the site owner.':e.message});}
   });
   app.post('/mcp',async(req,res)=>{
