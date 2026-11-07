@@ -1,0 +1,479 @@
+{
+  "checked_at": "2026-11-07T04:59:12.601Z",
+  "paid_runs_started": 0,
+  "actors": [
+    {
+      "actor": "memo23/fiverr-scraper",
+      "build": "0.1.66",
+      "limitations": "Detailed gigs and seller profiles; page review samples only. Extended review option is documented as available from 20 November 2026 and is deliberately not used.",
+      "input_schema": {
+        "title": "Fiverr Scraper",
+        "description": "Scrape Fiverr gigs, sellers, packages, reviews and pricing. Search by keyword or category, or paste gig / seller URLs. One flat row per gig (or seller); optionally enrich each gig with its detail page (full description, packages, reviews, FAQ, gallery).",
+        "type": "object",
+        "schemaVersion": 1,
+        "properties": {
+          "searchQueries": {
+            "sectionCaption": "What to scrape",
+            "sectionDescription": "Pick any combination — keyword searches, category URLs, gig URLs, seller URLs.",
+            "title": "Search keywords",
+            "type": "array",
+            "description": "Keywords to search on Fiverr, e.g. `logo design`, `video editing`, `voice over`. Each is searched and paginated.",
+            "editor": "stringList",
+            "prefill": [
+              "logo design"
+            ]
+          },
+          "categoryUrls": {
+            "title": "Category URLs",
+            "type": "array",
+            "description": "Fiverr category / sub-category browse URLs, e.g. `https://www.fiverr.com/categories/graphics-design/creative-logo-design`. Paginated like a search.",
+            "editor": "stringList",
+            "prefill": []
+          },
+          "startUrls": {
+            "title": "Gig & seller URLs",
+            "type": "array",
+            "description": "Direct gig URLs (`https://www.fiverr.com/{seller}/{gig-slug}`) and/or seller-profile URLs (`https://www.fiverr.com/{seller}`). Auto-classified.",
+            "editor": "stringList",
+            "prefill": []
+          },
+          "scrapeDetails": {
+            "sectionCaption": "Depth & limits",
+            "title": "Scrape gig detail pages",
+            "type": "boolean",
+            "description": "For each gig found in search/category, also fetch its detail page to add the full description, all package tiers, top reviews, FAQ, gallery and category names. Richer rows, but ~2× the requests. Off = the search-card fields (already ~30 per gig). Gig URLs you paste are always fully detailed.",
+            "default": false
+          },
+          "maxReviewsPerGig": {
+            "title": "Reviews per gig",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 1000,
+            "default": 0,
+            "description": "Collect up to this many reviews per gig into a `reviews` list (reviewer, country, rating, text, date, order price range, seller's reply and more). 0 = off: detailed rows keep only the 5 reviews shown on the gig page. Each review is one `review` event, except the 5 that come with the gig page when it is fetched anyway (gig URLs, or detail pages on). Works with or without detail pages. Max 1000. Available from 20 November 2026."
+          },
+          "reviewsSort": {
+            "title": "Review order",
+            "type": "string",
+            "enum": [
+              "relevant",
+              "recent"
+            ],
+            "enumTitles": [
+              "Most relevant (Fiverr's default)",
+              "Most recent first"
+            ],
+            "default": "relevant",
+            "description": "Order of the `reviews` list. With `Most recent first`, every review is an extra `review` event."
+          },
+          "maxItems": {
+            "title": "Max results (whole run)",
+            "type": "integer",
+            "description": "Hard cap on rows across the entire run. Each row is one paid `gig` event. Default 1000. Free-plan runs are capped at 25 rows.",
+            "prefill": 50,
+            "default": 1000,
+            "minimum": 1
+          },
+          "maxItemsPerSearch": {
+            "title": "Max gigs per search",
+            "type": "integer",
+            "description": "Cap per search keyword / category URL. Fiverr returns ~48 gigs per page. Default 1000.",
+            "default": 1000,
+            "minimum": 1
+          },
+          "maxConcurrency": {
+            "title": "Max parallel requests",
+            "type": "integer",
+            "description": "Parallel HTTP requests. Fiverr is protected by PerimeterX — keep this moderate (4–8). Default 6.",
+            "default": 6,
+            "minimum": 1,
+            "maximum": 15
+          },
+          "maxRequestRetries": {
+            "title": "Max request retries",
+            "type": "integer",
+            "description": "Per-request retry budget on PerimeterX challenges (403), 429 and network errors. Each retry rotates to a fresh residential IP; a 30-second wall-clock budget per URL applies on top, and an unblocker service takes over when HTTP is exhausted. Capped at 10.",
+            "default": 10,
+            "minimum": 0,
+            "maximum": 10
+          },
+          "proxy": {
+            "sectionCaption": "Proxy",
+            "title": "Proxy configuration (optional override)",
+            "type": "object",
+            "description": "Leave empty — the actor already routes all traffic through its own built-in residential proxy at no extra cost to you. Only set this if you want to use your own proxies.",
+            "editor": "proxy"
+          },
+          "customProxyUrls": {
+            "title": "Custom proxy URLs (advanced)",
+            "type": "array",
+            "description": "Optional — bring your own HTTP proxy (e.g. `http://user:pass@host:port`). When set, these are used instead of Apify Proxy on any plan; the scraper rotates the session per request. You usually don't need this: the default Apify Residential proxy clears PerimeterX for normal and high-volume runs. Only add a custom proxy if blocking climbs — and make sure it actually works from Apify's cloud (some proxies that work from a home IP hang or block from Apify's datacenter egress), so test it with a real run first.",
+            "editor": "stringList",
+            "prefill": []
+          }
+        }
+      },
+      "adapter_checks": [
+        {
+          "mode": "search",
+          "input": {
+            "searchQueries": [
+              "logo design"
+            ],
+            "scrapeDetails": true,
+            "maxItems": 10,
+            "maxItemsPerSearch": 10,
+            "maxConcurrency": 4
+          }
+        },
+        {
+          "mode": "seller",
+          "input": {
+            "startUrls": [
+              "https://www.fiverr.com/example"
+            ],
+            "scrapeDetails": true,
+            "maxItems": 10,
+            "maxItemsPerSearch": 10,
+            "maxConcurrency": 4
+          }
+        },
+        {
+          "mode": "gig",
+          "input": {
+            "startUrls": [
+              "https://www.fiverr.com/example/service"
+            ],
+            "scrapeDetails": true,
+            "maxItems": 10,
+            "maxItemsPerSearch": 10,
+            "maxConcurrency": 4
+          }
+        }
+      ]
+    },
+    {
+      "actor": "logiover/fiverr-scraper",
+      "build": "1.0.19",
+      "limitations": "Search filters, seller portfolio and detailed gig tags. Does not guarantee complete review history.",
+      "input_schema": {
+        "title": "Fiverr Scraper — input",
+        "description": "Pick a mode, then fill the fields that mode needs. Each section notes which mode(s) use it. Leave everything empty to browse popular 'logo design' gigs.",
+        "type": "object",
+        "schemaVersion": 1,
+        "properties": {
+          "mode": {
+            "title": "Mode",
+            "description": "Which Fiverr endpoint to scrape.\n\n• **search** — search gigs by keyword and paginate (~48 gigs/page → thousands). Highest volume.\n• **category** — list gigs under a Fiverr category / subcategory slug, or a pasted category URL.\n• **seller** — full profile + all public gigs of one seller username.\n• **gigDetail** — deep detail for one or more gig URLs: 3-tier packages, description, FAQ, tags, gallery and seller stats.",
+            "type": "string",
+            "enum": [
+              "search",
+              "category",
+              "seller",
+              "gigDetail"
+            ],
+            "enumTitles": [
+              "Search gigs by keyword (high volume)",
+              "Category / subcategory listing",
+              "Seller profile + their gigs",
+              "Gig details (by gig URL, batch)"
+            ],
+            "default": "search",
+            "prefill": "search"
+          },
+          "query": {
+            "title": "Search query",
+            "description": "Keyword for **search** mode — a service, skill or niche (e.g. `logo design`, `wordpress`, `voice over`, `video editing`). Fiverr caps a single query at ~380 gigs; for more, add several terms in **Search queries** below. Empty input browses popular services.",
+            "type": "string",
+            "editor": "textfield",
+            "example": "logo design",
+            "prefill": "logo design",
+            "nullable": true,
+            "sectionCaption": "Search (mode = search)",
+            "sectionDescription": "The keyword search that paginates through Fiverr's marketplace. One term caps near ~380 gigs; use the multi-query field for higher volume."
+          },
+          "queries": {
+            "title": "Search queries (multi, high volume)",
+            "description": "Optional list of keywords to scrape in one run (results de-duplicated by gig ID). A single Fiverr query tops out around ~380 gigs, so use several complementary terms to collect thousands. Overrides/extends the single query above.",
+            "type": "array",
+            "editor": "stringList",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "prefill": [
+              "logo design",
+              "website design",
+              "wordpress"
+            ],
+            "nullable": true
+          },
+          "category": {
+            "title": "Category slug",
+            "description": "Fiverr category slug for **category** mode, e.g. `graphics-design`, `programming-tech`, `digital-marketing`, `writing-translation`, `video-animation`, `music-audio`, `business`, `data`, `ai-services`. Taken from a Fiverr category URL: fiverr.com/categories/**graphics-design**.",
+            "type": "string",
+            "editor": "textfield",
+            "example": "graphics-design",
+            "nullable": true,
+            "sectionCaption": "Category listing (mode = category)",
+            "sectionDescription": "Provide a category (+ optional subcategory) slug, or just paste a full Fiverr category URL below."
+          },
+          "subcategory": {
+            "title": "Subcategory slug (optional)",
+            "description": "Optional subcategory slug under the category, e.g. `creative-logo-design`, `website-development`, `social-media-marketing`. From fiverr.com/categories/graphics-design/**creative-logo-design**.",
+            "type": "string",
+            "editor": "textfield",
+            "example": "creative-logo-design",
+            "nullable": true
+          },
+          "categoryUrl": {
+            "title": "Category URL (optional)",
+            "description": "Alternatively, paste a full Fiverr category or search URL and the scraper will paginate it directly. Overrides the category/subcategory slugs above.",
+            "type": "string",
+            "editor": "textfield",
+            "example": "https://www.fiverr.com/categories/graphics-design/creative-logo-design",
+            "nullable": true
+          },
+          "seller": {
+            "title": "Seller username or profile URL",
+            "description": "For **seller** mode — a Fiverr username (e.g. `martinkokes`) or a full profile URL (`https://www.fiverr.com/martinkokes`). Returns the seller's profile stats plus every public gig.",
+            "type": "string",
+            "editor": "textfield",
+            "example": "martinkokes",
+            "nullable": true,
+            "sectionCaption": "Seller (mode = seller)",
+            "sectionDescription": "Scrape one seller's profile and gig portfolio."
+          },
+          "gigUrl": {
+            "title": "Gig URL",
+            "description": "A single Fiverr gig URL for **gigDetail** mode, e.g. `https://www.fiverr.com/username/gig-slug`. For many gigs at once, use the batch field below.",
+            "type": "string",
+            "editor": "textfield",
+            "example": "https://www.fiverr.com/martinkokes/design-a-modern-worldclass-logo",
+            "nullable": true,
+            "sectionCaption": "Gig details (mode = gigDetail)",
+            "sectionDescription": "Provide one gig URL, or a batch of URLs below."
+          },
+          "gigUrls": {
+            "title": "Gig URLs (batch)",
+            "description": "Array of Fiverr gig URLs for batch **gigDetail** lookups. Paste gig links (one per line).",
+            "type": "array",
+            "editor": "stringList",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "nullable": true
+          },
+          "sort": {
+            "title": "Sort by",
+            "description": "Result ordering for search / category modes.",
+            "type": "string",
+            "enum": [
+              "relevance",
+              "best_selling",
+              "newest",
+              "rating"
+            ],
+            "enumTitles": [
+              "Relevance (default)",
+              "Best selling",
+              "Newest arrivals",
+              "Highest rating"
+            ],
+            "default": "relevance",
+            "prefill": "relevance",
+            "nullable": true,
+            "sectionCaption": "Filters (search / category)",
+            "sectionDescription": "Optional filters applied to search and category listings. All are dropdowns — no mistyping."
+          },
+          "sellerLevel": {
+            "title": "Seller level",
+            "description": "Only include gigs from sellers of this level (search / category).",
+            "type": "string",
+            "enum": [
+              "new_seller",
+              "level_one",
+              "level_two",
+              "top_rated_seller",
+              "pro"
+            ],
+            "enumTitles": [
+              "New seller",
+              "Level 1",
+              "Level 2",
+              "Top Rated Seller",
+              "Fiverr Pro"
+            ],
+            "nullable": true
+          },
+          "priceBucket": {
+            "title": "Price range (USD)",
+            "description": "Filter gigs by starting price bucket (search / category).",
+            "type": "string",
+            "enum": [
+              "under_50",
+              "50_100",
+              "100_500",
+              "500_1000",
+              "over_1000"
+            ],
+            "enumTitles": [
+              "Under $50",
+              "$50 – $100",
+              "$100 – $500",
+              "$500 – $1000",
+              "Over $1000"
+            ],
+            "nullable": true
+          },
+          "deliveryTime": {
+            "title": "Delivery time",
+            "description": "Only gigs that deliver within this timeframe (search / category).",
+            "type": "string",
+            "enum": [
+              "24h",
+              "3days",
+              "7days"
+            ],
+            "enumTitles": [
+              "Express 24 hours",
+              "Up to 3 days",
+              "Up to 7 days"
+            ],
+            "nullable": true
+          },
+          "proOnly": {
+            "title": "Fiverr Pro only",
+            "description": "When enabled, restrict search / category results to vetted Fiverr Pro gigs.",
+            "type": "boolean",
+            "default": false,
+            "nullable": true
+          },
+          "maxResults": {
+            "title": "Max results",
+            "description": "Upper bound on rows returned. For search / category this drives pagination (~48 per page). For seller it caps the seller's gig list. Default 200.",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000,
+            "default": 2368,
+            "prefill": 296,
+            "sectionCaption": "Common options",
+            "sectionDescription": "Apply across modes."
+          },
+          "proxyConfiguration": {
+            "title": "Proxy configuration",
+            "description": "Leave as is. Every page is tried on Apify datacenter IPs first and the Actor switches to Residential automatically when Fiverr refuses them, so you get the same data at the lowest proxy cost. Pick a Residential country here only if you need one; your own proxy URLs are used exactly as given.",
+            "type": "object",
+            "editor": "proxy",
+            "default": {
+              "useApifyProxy": true
+            },
+            "prefill": {
+              "useApifyProxy": true
+            }
+          }
+        },
+        "required": []
+      },
+      "adapter_checks": [
+        {
+          "mode": "search",
+          "input": {
+            "mode": "search",
+            "query": "logo design",
+            "maxResults": 10
+          }
+        },
+        {
+          "mode": "seller",
+          "input": {
+            "mode": "seller",
+            "seller": "example",
+            "maxResults": 10
+          }
+        },
+        {
+          "mode": "gig",
+          "input": {
+            "mode": "gigDetail",
+            "gigUrls": [
+              "https://www.fiverr.com/example/service"
+            ],
+            "maxResults": 10
+          }
+        }
+      ]
+    },
+    {
+      "actor": "dionysus_way/fiverr",
+      "build": "1.0.17",
+      "limitations": "Additional seller bios, notable clients where exposed, and textual recent-review summaries.",
+      "input_schema": {
+        "title": "Fiverr Gigs & Categories Scraper",
+        "type": "object",
+        "schemaVersion": 1,
+        "properties": {
+          "startUrls": {
+            "sectionCaption": "Fiverr URLs (up to 10): categories, searches, seller profiles, Pro pages or gigs. Fiverr often stops after 21 pages and repeats gigs, so you may get fewer than you choose. Split large searches using filters to find more unique gigs.",
+            "title": "Start URLs (up to 10)",
+            "type": "array",
+            "description": "Add up to 10 Fiverr URLs.",
+            "editor": "stringList",
+            "minItems": 1,
+            "maxItems": 10,
+            "items": {
+              "type": "string",
+              "pattern": "^https://(www|pro)\\.fiverr\\.com/.*"
+            },
+            "prefill": [
+              "https://www.fiverr.com/categories/finance/tax-consulting/tax-exemptions?source=drop_down_filters&ref=seller_level%3Atop_rated_seller"
+            ]
+          },
+          "maxItemsPerUrl": {
+            "title": "Max Gigs per URL",
+            "type": "integer",
+            "description": "Maximum gigs to save from each URL.",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 100,
+            "prefill": 100,
+            "editor": "number"
+          }
+        },
+        "required": [
+          "startUrls"
+        ]
+      },
+      "adapter_checks": [
+        {
+          "mode": "search",
+          "input": {
+            "startUrls": [
+              "https://www.fiverr.com/search/gigs?query=logo%20design"
+            ],
+            "maxItemsPerUrl": 10
+          }
+        },
+        {
+          "mode": "seller",
+          "input": {
+            "startUrls": [
+              "https://www.fiverr.com/example"
+            ],
+            "maxItemsPerUrl": 10
+          }
+        },
+        {
+          "mode": "gig",
+          "input": {
+            "startUrls": [
+              "https://www.fiverr.com/example/service"
+            ],
+            "maxItemsPerUrl": 10
+          }
+        }
+      ]
+    }
+  ]
+}

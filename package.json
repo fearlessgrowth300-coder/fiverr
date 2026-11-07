@@ -1,0 +1,22 @@
+{
+  "name": "fiverr-gig-studio",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "Buyer-focused Fiverr gig research and drafting tools for ChatGPT and Claude",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node --env-file-if-exists=.env scripts/dev.mjs",
+    "stdio": "node --env-file-if-exists=.env src/index.js --stdio",
+    "test": "node --test",
+    "check": "node --check app.js && node --test",
+    "local": "node --env-file-if-exists=.env src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "express": "^5.1.0",
+    "zod": "4.6.7"
+  }
+}
