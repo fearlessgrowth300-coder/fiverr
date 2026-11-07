@@ -5,24 +5,24 @@ export function fiverrUrl(v) {
   try { const u = new URL(v); return u.protocol === 'https:' && ['www.fiverr.com','fiverr.com','pro.fiverr.com'].includes(u.hostname) && !u.username && !u.password && !u.port ? `https://${u.hostname === 'pro.fiverr.com' ? 'pro.fiverr.com' : 'www.fiverr.com'}${u.pathname.replace(/\/+$/, '').toLowerCase()}` : null; } catch { return null; }
 }
 export function normalize(row) {
-  const source = fiverrUrl(pick(row.gigUrl, row.url, row.sellerUrl));
-  const username = pick(row.sellerName, row.seller_username, row.username, row.seller?.username);
+  const source = fiverrUrl(pick(row.gigUrl, row.sourceUrl, row.url, row.sellerUrl, row.sellerProfileUrl));
+  const username = pick(row.sellerName, row.sellerUsername, row.seller_username, row.username, row.seller?.username);
   const profile = row.rowType === 'seller' || row.type === 'seller' || (source && new URL(source).pathname.split('/').filter(Boolean).length === 1);
   const p = row.packages || ['basic','standard','premium'].filter(k => row[`price_${k}`] != null).map(k => ({ tier: k, price: number(row[`price_${k}`]), delivery_days: number(row[`delivery_${k}`]), revisions: number(row[`revisions_${k}`]), features: array(row[`features_${k}`]) }));
-  const nm = v => typeof v === 'object' && v ? (v.name ?? v.title ?? v.slug ?? v.value ?? null) : v;
+  const nm = v => typeof v === 'object' && v ? (v.name ?? v.title ?? v.slug ?? v.value ?? v.url ?? null) : v;
   return {
     kind: row.recordType === 'tag' ? 'tag' : row.recordType === 'marketSummary' ? 'summary' : profile ? 'seller' : 'gig', username, source_url: source,
     tag_name: pick(row.tagName), search_query: pick(row.searchQuery), search_position: number(row.position), search_page: number(row.page),
     summary: row.recordType === 'marketSummary' ? { total_results: number(row.totalResults), sampled: number(row.sampledCount), price_min: number(row.priceMin), price_median: number(row.priceMedian), price_max: number(row.priceMax), seller_levels: row.sellerLevelCounts ?? null, top_countries: row.topSellerCountries ?? null } : null,
-    title: profile ? null : pick(row.title), description: pick(row.description),
+    title: profile ? null : pick(row.title), description: pick(row.fullDescription, row.description),
     category: pick(row.category, row.category_name), subcategory: pick(row.subCategory, row.category_sub),
-    tags: array(pick(row.tags, row.gigTags)).map(nm).filter(Boolean), price_from: number(pick(row.priceFrom, row.price)), currency: pick(row.currency), packages: p,
+    tags: array(pick(row.tags, row.gigTags)).map(nm).filter(Boolean), price_from: number(pick(row.priceFrom, row.priceMin, row.price)), currency: pick(row.currency), packages: p,
     gig_rating: profile ? null : number(pick(row.buyingReviewRating, row.rating)), gig_review_count: profile ? null : number(pick(row.buyingReviewsCount, row.reviewsCount)),
     orders_in_queue: number(pick(row.ordersInQueue, row.orders_in_queue)),
     metadata: Array.isArray(row.attributes) ? row.attributes.flatMap(a => (a.values || []).map(v => `${a.type}: ${nm(v)}`)) : row.gigMetadata && typeof row.gigMetadata === 'object' ? Object.entries(row.gigMetadata).flatMap(([k, v]) => [].concat(v).filter(x => x != null && typeof x !== 'object').map(x => `${k}: ${x}`)) : [],
-    profile: { bio: pick(row.seller_bio, row.bio, profile ? row.description : null), display_name: pick(row.sellerDisplayName,row.seller_name), country: pick(row.sellerCountry,row.seller_country,row.country), languages: array(pick(row.sellerLanguages,row.seller_languages,row.languages)), skills: array(pick(row.sellerSkills,row.seller_skills,row.skills)), level: pick(row.sellerLevel,row.level)?.toString().toLowerCase().replace(/\s+/g,'_') ?? null, notable_clients: array(pick(row.notable_clients,row.notableClients)), rating: number(pick(row.sellerRating,row.seller_rating,profile ? row.rating : null)), review_count: number(pick(row.sellerRatingCount,row.seller_reviews,profile ? row.reviewsCount : null)) },
-    images: array(pick(row.images,row.gallery_images,row.gallery)),
-    reviews: Array.isArray(row.reviews) ? row.reviews : Array.isArray(row.topReviews) ? row.topReviews : [],
+    profile: { bio: pick(row.seller_bio, row.bio, row.sellerDescription, row.sellerOneLiner, profile ? row.description : null), display_name: pick(row.sellerDisplayName,row.seller_name), country: pick(row.sellerCountry,row.sellerCountryCode,row.seller_country,row.country), languages: array(pick(row.sellerLanguages,row.seller_languages,row.languages)), skills: array(pick(row.sellerSkills,row.seller_skills,row.skills)), level: pick(row.sellerLevel,row.level)?.toString().toLowerCase().replace(/\s+/g,'_') ?? null, notable_clients: array(pick(row.notable_clients,row.notableClients)), rating: number(pick(row.sellerRating,row.sellerOverallRating,row.seller_rating,profile ? row.rating : null)), review_count: number(pick(row.sellerRatingCount,row.sellerOverallReviewsCount,row.seller_reviews,profile ? row.reviewsCount : null)) },
+    images: array(pick(row.images,row.gigGallery,row.gallery_images,row.gallery)).map(nm).filter(Boolean),
+    reviews: (Array.isArray(row.reviews) ? row.reviews : Array.isArray(row.topReviews) ? row.topReviews : []).map(r => r && typeof r === 'object' && r.text == null && r.comment != null ? { ...r, text: r.comment, author: r.author ?? r.reviewerUsername, country: r.country ?? r.reviewerCountryCode, date: r.date ?? r.createdAt } : r),
     review_summary_text: pick(row.recent_reviews_summary),
     faq: pick(row.faq,row.faq_summary),
     published: row.isPublished === false || row.published === false ? false : null,
@@ -62,7 +62,7 @@ export function analyzeJob(job) {
     new Set(g.tags.map(t => t.toLowerCase().trim())).forEach(t => inc(tags, t));
     new Set(g.metadata || []).forEach(m => inc(meta, m));
     inc(levels, g.profile?.level || 'unknown');
-    const ps = (g.packages || []).map(p => ({ price: number(p.price), days: number(p.durationDays ?? p.deliveryDays ?? p.delivery_days) })).filter(p => p.price != null).sort((a, b) => a.price - b.price);
+    const ps = (g.packages || []).map(p => ({ price: number(p.price ?? p.priceUsd), days: number(p.durationDays ?? p.deliveryDays ?? p.delivery_days) })).filter(p => p.price != null).sort((a, b) => a.price - b.price);
     if (!ps.length && g.price_from != null) ps.push({ price: g.price_from, days: null });
     ps.slice(0, 3).forEach((p, i) => { prices[i].push(p.price); if (p.days != null) days[i].push(p.days); });
   }

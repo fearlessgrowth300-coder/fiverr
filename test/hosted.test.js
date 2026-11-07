@@ -10,7 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 
 function mockApify(){
   const records=new Map(),calls=[];
-  return {records,calls,schemaCache:new Map([['memo23',{}],['logiover',{}],['dionysus',{}]]),
+  return {records,calls,schemaCache:new Map([['memo23',{}],['logiover',{}],['dionysus',{}],['vexaloom',{}]]),
     async request(path,token,options={}) {
       calls.push({path,token,options});
       if(path==='/users/me')return {data:{id:token,username:'seller'}};
@@ -78,7 +78,7 @@ test('search runs every scraper, merges duplicates, and moves to the next key wh
   assert.equal(api.calls.find(c=>c.paid&&c.adapter==='memo23').input.maxItems,240);
   await r.poll(w,started.job_id);
   const detail=api.calls.filter(c=>c.paid).at(-1);
-  assert.deepEqual([detail.adapter,detail.input.mode,detail.input.gigUrls],['logiover','gigDetail',['https://www.fiverr.com/seller/example']]);
+  assert.deepEqual([detail.adapter,detail.input.mode,detail.input.gigUrls],['vexaloom','gigDetails',['https://www.fiverr.com/seller/example']]);
   const done=await r.poll(w,started.job_id);
   assert.equal(done.research_complete,true);
   assert.equal(done.total_in_snapshot,1); // same gig URL from 3 scrapers merged

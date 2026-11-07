@@ -163,3 +163,10 @@ test('Fiverr tag-directory terms count as buyer searches',async()=>{
   const k=await buyerKeywordIdeas('ai music video',null,[['direct',none]],['ai-birthday-music-video','gospel-music-video']);
   assert.deepEqual(k.niche_down.map(x=>x.keyword).sort(),['ai birthday music video','gospel music video']); // same-length genre tags count
 });
+
+test('vexaloom gig-detail rows map reviews, tags, packages and seller fields',()=>{
+  const g=normalize({recordType:'gigDetail',sourceUrl:'https://www.fiverr.com/lev/ai-video',sellerUsername:'lev',title:'make ai music video',fullDescription:'Full text',priceMin:50,gigTags:['ai music video'],gigGallery:[{url:'https://x/1.png'}],faq:[{question:'q',answer:'a'}],packages:[{tier:'basic',priceUsd:50,deliveryDays:3}],reviews:[{comment:'Great video',rating:5,reviewerUsername:'bob',reviewerCountryCode:'US',createdAt:'2026-10-01'}],sellerOverallRating:4.9,sellerCountryCode:'IL',notableClients:['Sony']});
+  assert.deepEqual([g.source_url,g.username,g.description,g.price_from,g.tags,g.images.length],['https://www.fiverr.com/lev/ai-video','lev','Full text',50,['ai music video'],1]);
+  assert.deepEqual([g.reviews[0].text,g.reviews[0].author,g.reviews[0].country],['Great video','bob','US']);
+  assert.deepEqual([g.profile.rating,g.profile.country,g.profile.notable_clients],[4.9,'IL',['Sony']]);
+});

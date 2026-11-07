@@ -10,7 +10,8 @@ export function actorInput(adapter, mode, args) {
   if (mode === 'search' && args.pages) args = { ...args, limit: args.pages * 48 };
   if (mode === 'sellers') args = { ...args, limit: args.usernames.length * 10 };
   const urls = mode === 'seller' || mode === 'sellers' ? (args.usernames || [args.username]).map(u => `https://www.fiverr.com/${u}`) : args.urls;
-  if (adapter === 'vexaloom') return mode === 'tags'
+  if (adapter === 'vexaloom') return mode === 'gig' ? { mode: 'gigDetails', gigUrls: urls, includePackages: true, includeFaq: true, maxItems: urls.length }
+    : mode === 'tags'
     ? { mode: 'sitemapDirectory', sitemapType: 'tags', searchKeyword: args.tag_filter, maxShards: 2, maxItems: 500 }
     : { mode: 'search', searchQueries: args.keywords, maxPagesPerQuery: 1, includeMarketSummary: true, maxItems: args.keywords.length * 50 };
   if (adapter === 'memo23') return { ...(mode === 'search' ? { searchQueries: [args.buyer_need] } : { startUrls: urls }), scrapeDetails: true, maxItems: args.limit, maxItemsPerSearch: args.limit, maxConcurrency: 4 };

@@ -119,9 +119,9 @@ export class HostedResearch {
       j.detailsStarted=true;
       const urls=(await this.collect(j,accounts)).filter(r=>r.kind==='gig'&&r.source_url).slice(0,j.limit).map(r=>r.source_url);
       if(urls.length) {
-        const d=await this.startRun(w,'logiover',actorInput('logiover','gig',{urls,limit:urls.length}));
+        const d=await this.startRun(w,'vexaloom',actorInput('vexaloom','gig',{urls,limit:urls.length}));
         j.runs.push({...d,phase:'details'});
-        if(!done(d)) {j.status='RUNNING';j.stage=`opening ${urls.length} gig pages for tags, descriptions, prices, FAQ`;await this.put(w,'job-'+j.id,j);return {...this.result(j,'gigs'),stage:j.stage,research_complete:false};}
+        if(!done(d)) {j.status='RUNNING';j.stage=`opening ${urls.length} gig pages for tags, descriptions, prices, FAQ, reviews`;await this.put(w,'job-'+j.id,j);return {...this.result(j,'gigs'),stage:j.stage,research_complete:false};}
       }
     }
     j.rows=await this.collect(j,accounts);j.collectedAt=new Date().toISOString();j.stage='complete';

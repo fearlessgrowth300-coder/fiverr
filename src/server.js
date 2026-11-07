@@ -9,7 +9,7 @@ import { buyerKeywordIdeas } from './keywords.js';
 
 const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
 const username = z.string().regex(/^[A-Za-z0-9_]{2,60}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
-const adapter = z.enum(['memo23','logiover','dionysus']).default('memo23');
+const adapter = z.enum(['memo23','logiover','dionysus','vexaloom']).default('memo23');
 const pagination = { job_id: z.string().uuid().optional(), offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(50).default(10) };
 const outputSchema = { result: z.record(z.string(), z.unknown()) };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: { result: data } });
