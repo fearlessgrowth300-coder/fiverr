@@ -4,6 +4,7 @@ import { normalize, viewJob, rowsFor, fiverrUrl } from './normalize.js';
 import { hash } from './storage.js';
 
 const terminal=new Set(['SUCCEEDED','FAILED','ABORTED','TIMED-OUT']);
+const fillGaps=(a,b)=>{for(const [k,v] of Object.entries(b)){if(a[k]==null||(Array.isArray(a[k])&&!a[k].length))a[k]=v;else if(k==='profile'&&v)fillGaps(a[k],v);}return a;};
 const done=r=>terminal.has(r.status)||(r.status==='START_UNCERTAIN'&&!r.runId);
 // Apify statuses that mean "this key can't run right now" (revoked, out of credit, plan/actor limit, rate limit) -> try the next key.
 const rotate=new Set([401,402,403,429]);
@@ -54,7 +55,7 @@ export class HostedResearch {
       return this.result(j,view,args);
     }
     // Searches run every Fiverr scraper in parallel unless one is named; other lookups use one.
-    const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):['memo23'];
+    const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):mode==='seller'?['memo23','dionysus']:['memo23'];
     const inputs=adapters.map(ad=>actorInput(ad,mode,args));
     for(const ad of adapters) if(!this.apify.schemaCache.has(ad))await this.apify.inspect(ad);
     const fingerprint=hash(JSON.stringify(['v2',adapters,inputs]));
@@ -89,7 +90,7 @@ export class HostedResearch {
         const prev=row.source_url&&merged.get(row.source_url);
         if(!row.source_url) loose.push(row);
         else if(!prev) {if(r.phase!=='details')merged.set(row.source_url,{...row,_idx:idx});}
-        else {prev._idx=Math.min(prev._idx,idx);for(const [k,v] of Object.entries(row)) if(prev[k]==null||(Array.isArray(prev[k])&&!prev[k].length)) prev[k]=v;}
+        else {prev._idx=Math.min(prev._idx,idx);fillGaps(prev,row);}
       });
     }
     const rows=[...merged.values()].sort((x,y)=>x._idx-y._idx);

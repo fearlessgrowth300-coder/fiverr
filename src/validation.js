@@ -15,6 +15,7 @@ export const gigSchema = z.object({
   images: z.array(z.object({ headline: text, supporting_text: text, layout: text, visual_concept: text, buyer_relevance: text, thumbnail_check: text })).min(1).max(3),
   requirements: z.array(z.object({ question: text, required: z.boolean(), response_type: z.enum(['free_text', 'attachment', 'multiple_choice']), options: z.array(text).optional() })).min(1).max(20),
   buyer_hypothesis: text,
+  buyer_check: z.object({ real_problem: text, seller_can_fix_it: text, contact_now: text }).describe('Read the finished gig AS the buyer: Is this my real problem (in my words)? Can this seller clearly fix it? Would I message/order right now, and why? Any "no" means revise the gig first.'),
   evidence: z.array(z.object({ job_id: z.string().uuid(), source_url: z.string().url(), observation: text })).max(30),
   limitations: list,
   next_question: text,
@@ -50,6 +51,6 @@ export function renderGig(g) {
   for (const f of g.faq) lines.push('', `**${f.question}**`, f.answer);
   lines.push('', '## Image briefs — 1280 x 769 px');
   g.images.forEach((im, i) => lines.push('', `### Image ${i + 1}: ${im.headline}`, im.supporting_text, '', `Layout: ${im.layout}`, `Visual: ${im.visual_concept}`, `Buyer relevance: ${im.buyer_relevance}`, `Thumbnail check: ${im.thumbnail_check}`));
-  lines.push('', '## Buyer requirements', ...g.requirements.map(r => `- ${r.question} (${r.required ? 'Required' : 'Optional'}; ${r.response_type})${r.options ? ': ' + r.options.join(' / ') : ''}`), '', '## Research', `Buyer hypothesis: ${g.buyer_hypothesis}`, '', ...g.evidence.map(e => `- ${e.observation} — ${e.source_url} (research ${e.job_id})`), '', 'Limitations:', ...g.limitations.map(x => `- ${x}`), '', g.next_question);
+  lines.push('', '## Buyer requirements', ...g.requirements.map(r => `- ${r.question} (${r.required ? 'Required' : 'Optional'}; ${r.response_type})${r.options ? ': ' + r.options.join(' / ') : ''}`), '', '## Buyer check', `Is this my real problem? ${g.buyer_check.real_problem}`, `Can this seller fix it? ${g.buyer_check.seller_can_fix_it}`, `Would I contact them now? ${g.buyer_check.contact_now}`, '', '## Research', `Buyer hypothesis: ${g.buyer_hypothesis}`, '', ...g.evidence.map(e => `- ${e.observation} — ${e.source_url} (research ${e.job_id})`), '', 'Limitations:', ...g.limitations.map(x => `- ${x}`), '', g.next_question);
   return lines.join('\n');
 }

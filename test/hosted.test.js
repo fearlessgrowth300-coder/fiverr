@@ -83,3 +83,16 @@ test('search runs every scraper, merges duplicates, and moves to the next key wh
   assert.equal(done.research_complete,true);
   assert.equal(done.total_in_snapshot,1); // same gig URL from 3 scrapers merged
 });
+
+test('seller deep-dive runs memo23 + dionysus and combines the profile',async()=>{
+  const api=mockApify(),r=new HostedResearch(api),w={owner:'o',token:'k',userId:'k',storeId:'s'};
+  api.items=async()=>[
+    {rowType:'seller',sellerUrl:'https://www.fiverr.com/levmusic',sellerName:'levmusic',sellerCountry:'US',level:'Top Rated Seller'},
+    {gigUrl:'https://www.fiverr.com/levmusic/ai-video',sellerName:'levmusic',title:'produce an ai music video',seller_bio:'Producer for 10 years',notable_clients:['Sony']},
+  ];
+  const s=await r.request(w,'seller',{username:'levmusic',limit:10},'overview');
+  assert.deepEqual(api.calls.filter(c=>c.paid).map(c=>c.adapter),['memo23','dionysus']);
+  await r.poll(w,s.job_id);
+  const o=await r.request(w,'seller',{username:'levmusic',job_id:s.job_id},'overview');
+  assert.equal(o.profile.country,'US');assert.equal(o.profile.bio,'Producer for 10 years');assert.deepEqual(o.profile.notable_clients,['Sony']);
+});

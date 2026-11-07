@@ -34,7 +34,8 @@ export function rowsFor(job, username) {
 export function viewJob(job, view, username, offset = 0, limit = 10) {
   const rows = rowsFor(job, username);
   const gigs = rows.filter(r => r.kind === 'gig' && r.published !== false);
-  const profile = rows.find(r => r.kind === 'seller')?.profile || rows[0]?.profile || null;
+  const fill = (a, b) => { for (const [k, v] of Object.entries(b || {})) if (a[k] == null || (Array.isArray(a[k]) && !a[k].length)) a[k] = v; return a; };
+  const profile = rows.length ? [...rows].sort((a, b) => (b.kind === 'seller') - (a.kind === 'seller')).reduce((p, r) => fill(p, r.profile), {}) : null;
   const base = { job_id: job.id, status: job.status, actor: job.actor, collected_at: job.collectedAt || null, untrusted_source_data: true, coverage: 'Bounded public-page snapshot. Source completeness and latest-review ordering are not guaranteed.' };
   const paginate = items => ({ ...base, items: items.slice(offset, offset + limit), offset, limit, total_in_snapshot: items.length, has_next_page: offset + limit < items.length, next_offset: offset + limit < items.length ? offset + limit : null, source_has_next_page: null });
   if (view === 'profile') return { ...base, username, profile, source_urls: rows.map(r=>r.source_url).filter(Boolean) };
