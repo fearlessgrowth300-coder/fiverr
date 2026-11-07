@@ -31,7 +31,12 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     if (!j.rows) return ['Research is still running: keep polling get_research_job until research_complete is true. Do not fill in with web search.'];
     const gigs = j.rows.filter(r => r.kind === 'gig').length, need = Math.min(5, gigs);
     const cited = new Set(g.evidence.filter(e => e.job_id === j.id).map(e => e.source_url)).size;
-    return cited < need ? [`Cite at least ${need} gigs from research job ${j.id} in evidence (source_url from find_freelancers results). Web-search sources do not count.`] : [];
+    const errs = cited < need ? [`Cite at least ${need} gigs from research job ${j.id} in evidence (source_url from find_freelancers results). Web-search sources do not count.`] : [];
+    if (research.readThrough) {
+      const total = viewJob(j, 'gigs', undefined, 0, 1).total_in_snapshot, read = await research.readThrough(w, j.id);
+      if (read < total) errs.push(`Read every collected gig first: you have read ${read} of ${total}. Call find_freelancers with job_id ${j.id}, offset ${read}, limit 50 and continue until has_next_page=false.`);
+    }
+    return errs;
   };
   const rank = async (w, g) => { let j = null; if (g.search_job_id && research.job) { try { j = await research.job(w, g.search_job_id); } catch {} } return scoreDraft(g, j); };
   const auth = args => authenticate ? authenticate(args.workspace_key) : authorize(args.workspace_key, workspaces);
@@ -46,7 +51,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
 
   tool('inspect_research_actor', 'Read the current schema, documented coverage and limitations for an executable Apify adapter. No paid run.', { workspace_key, adapter }, async args => { auth(args); return apify.inspect(args.adapter); }, { external: true });
 
-  tool('find_freelancers', NO_WEB + ' Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Send 2-5 search keywords a buyer would type (e.g. "ai music video"), never a sentence. Collects Fiverr search pages 1-5 by default; read results 10-50 at a time with job_id+offset until has_next_page=false. If 0 gigs come back, retry with shorter or different keywords before using anything else. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
+  tool('find_freelancers', NO_WEB + ' Finalize requires that you read EVERY collected gig, in order, via job_id + offset. Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Send 2-5 search keywords a buyer would type (e.g. "ai music video"), never a sentence. Collects Fiverr search pages 1-5 by default; read results 10-50 at a time with job_id+offset until has_next_page=false. If 0 gigs come back, retry with shorter or different keywords before using anything else. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
     workspace_key,
     buyer_need: z.string().trim().min(3).max(60).refine(v => v.split(/\s+/).length <= 5, 'Use 2-5 short keywords exactly as a buyer would type them into the Fiverr search bar, e.g. "ai music video" — not a sentence.').describe('2-5 keywords a buyer types into the Fiverr search bar, e.g. "ai music video", "logo design". NEVER a full sentence: long sentences return 0 gigs.'),
     pages: z.number().int().min(1).max(5).default(5).describe('How many Fiverr search result pages to collect (~48 gigs each). Default 5 = pages 1-5.'),

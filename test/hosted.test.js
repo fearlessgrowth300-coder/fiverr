@@ -123,3 +123,16 @@ test('tag directory + keyword competition run on vexaloom; one row per keyword e
   assert.equal(j.rows.find(x=>x.kind==='summary').summary.total_results,812);
   assert.deepEqual([gigs[0].tags,gigs[0].metadata,gigs[0].search_position],[['ai rap'],['style: cinematic'],1]);
 });
+
+test('read progress only advances in order, so finalize can require every gig was read',async()=>{
+  const api=mockApify(),r=new HostedResearch(api),w={owner:'o',token:'k',userId:'k',storeId:'s'};
+  api.items=async()=>Array.from({length:25},(_,i)=>({gigUrl:`https://www.fiverr.com/s${i}/g`,title:'gig '+i}));
+  const s=await r.request(w,'search',{buyer_need:'ai music video',pages:1},'gigs');
+  await r.poll(w,s.job_id);await r.poll(w,s.job_id);
+  const read=a=>r.request(w,'search',{buyer_need:'ai music video',pages:1,job_id:s.job_id,...a},'gigs');
+  assert.equal((await read({offset:20,limit:10})).read_progress.read,0); // skipping ahead doesn't count
+  assert.equal((await read({offset:0,limit:10})).read_progress.read,10);
+  const last=await read({offset:10,limit:50});
+  assert.deepEqual(last.read_progress,{read:25,total:25,next_offset:null});
+  assert.equal(await r.readThrough(w,s.job_id),25);
+});

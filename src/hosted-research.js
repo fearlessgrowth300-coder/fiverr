@@ -52,7 +52,13 @@ export class HostedResearch {
     if(args.job_id) {
       const j=await this.job(w,args.job_id);
       if(mode==='seller' ? j.username!==args.username&&!rowsFor(j,args.username).length : j.mode!==mode) throw new Error('Job does not match requested seller or research scope.');
-      return this.result(j,view,args);
+      const out=this.result(j,view,args);
+      if(mode!=='search'||view!=='gigs'||!j.rows) return out;
+      // Track how far the AI has read, in order (no skipping), so finalize can require every gig was read.
+      const read=await this.readThrough(w,j.id),offset=args.offset||0,seen=Math.min(offset+(args.limit||10),out.total_in_snapshot);
+      const now=offset<=read&&seen>read?seen:read;
+      if(now>read) await this.put(w,'read-'+j.id,{n:now});
+      return {...out,read_progress:{read:now,total:out.total_in_snapshot,next_offset:now<out.total_in_snapshot?now:null}};
     }
     // Searches run every Fiverr scraper in parallel unless one is named; other lookups use one.
     const adapters=args.adapter?[args.adapter]:mode==='tags'||mode==='compare'?['vexaloom']:mode==='search'?(args.quick?['logiover']:['memo23','logiover','dionysus']):mode==='seller'||mode==='sellers'?['memo23','dionysus']:['memo23'];
@@ -144,6 +150,7 @@ export class HostedResearch {
     j.status='RUNNING';
     await this.put(w,'job-'+j.id,j);return {job_id:id,status:j.status,actors:this.runInfo(j)};
   }
+  async readThrough(w,id) {return (await this.get(w,'read-'+id,true))?.n||0;}
   async listJobs(w) {
     const records=await this.apify.request(`/key-value-stores/${encodeURIComponent(w.storeId)}/keys?limit=1000`,w.token);
     const keys=records.data.items.filter(x=>x.key.startsWith('job-')).slice(-50);
