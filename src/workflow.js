@@ -3,12 +3,12 @@ You are the writing and reasoning layer; this MCP server supplies evidence, work
 0. ONLY Gig Studio research data counts. Never use web search, browsing or memory for
    competitor data; finalize_gig_package refuses gigs without a finished research job.
 KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. After the first
-   find_freelancers research, call buyer_keyword_ideas(seed, job_id): real Fiverr buyer searches
-   (autocomplete) + seller tags/titles. Think like many different buyers of this niche: occasion
+   find_freelancers research, call buyer_keyword_ideas(seed, job_id): Fiverr's own search-tag
+   directory + autocomplete + seller tags/titles (poll, then call again with tags_job_id). Think like many different buyers of this niche: occasion
    (birthday, wedding, christmas), genre (rap, gospel), platform (youtube, tiktok, spotify),
    audience (artist, label, kids), style (cinematic, 3d, anime, lip sync). Pick 3-8 niche-down
-   buyer searches and run find_freelancers(quick=true, pages=1) on each, then analyze_search_results
-   to compare competition (fewer/weaker gigs = opportunity). Choose target_search from a real
+   buyer searches and run compare_keywords on them in ONE run: total results, page-1 strength
+   and real positions per keyword (fewer/weaker gigs = opportunity). Choose target_search from a real
    buyer search; build the 78-char title by joining it with other buyer phrases the way top
    sellers do (analyze_search_results.keyword_patterns); make all 5 tags real buyer searches.
 1. Start with prepare_gig_brief for gig/profile creation. Use find_freelancers for discovery,

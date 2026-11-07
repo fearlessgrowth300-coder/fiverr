@@ -55,7 +55,7 @@ export class HostedResearch {
       return this.result(j,view,args);
     }
     // Searches run every Fiverr scraper in parallel unless one is named; other lookups use one.
-    const adapters=args.adapter?[args.adapter]:mode==='search'?(args.quick?['logiover']:Object.keys(ACTORS)):mode==='seller'||mode==='sellers'?['memo23','dionysus']:['memo23'];
+    const adapters=args.adapter?[args.adapter]:mode==='tags'||mode==='compare'?['vexaloom']:mode==='search'?(args.quick?['logiover']:['memo23','logiover','dionysus']):mode==='seller'||mode==='sellers'?['memo23','dionysus']:['memo23'];
     const inputs=adapters.map(ad=>actorInput(ad,mode,args));
     for(const ad of adapters) if(!this.apify.schemaCache.has(ad))await this.apify.inspect(ad);
     const fingerprint=hash(JSON.stringify(['v2',adapters,inputs]));
@@ -87,9 +87,9 @@ export class HostedResearch {
       const items=await this.apify.items(r.datasetId,acc.token,0,1000);
       items.forEach((raw,i)=>{
         const row=compact({...normalize(raw),source_actor:r.actor}),idx=r.phase==='details'?Infinity:i;
-        const prev=row.source_url&&merged.get(row.source_url);
+        const key=row.source_url&&(j.mode==='compare'?row.search_query+'|':'')+row.source_url,prev=key&&merged.get(key);
         if(!row.source_url) loose.push(row);
-        else if(!prev) {if(r.phase!=='details')merged.set(row.source_url,{...row,_idx:idx});}
+        else if(!prev) {if(r.phase!=='details')merged.set(key,{...row,_idx:idx});}
         else {prev._idx=Math.min(prev._idx,idx);fillGaps(prev,row);}
       });
     }

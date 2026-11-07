@@ -2,6 +2,7 @@ const ROOT = 'https://api.apify.com/v2';
 export const ACTORS = {
   memo23: { id: 'memo23/fiverr-scraper', build: '0.1.66', buildId:'eDtDB3NUQ1c7bCTSm', modes: ['search', 'seller', 'gig'], note: 'Detailed gigs and seller profiles; page review samples only. Extended review option is documented as available from 20 November 2026 and is deliberately not used.' },
   logiover: { id: 'logiover/fiverr-scraper', build: '1.0.19', buildId:'4PFv9jAZXnNJmlTMN', modes: ['search', 'seller', 'gig'], note: 'Search filters, seller portfolio and detailed gig tags. Does not guarantee complete review history.' },
+  vexaloom: { id: 'vexaloom-labs/fiverr-gig-and-seller-sitemap-directory-scraper', build: '1.0.2', buildId: 'ioz3XdgkePJ4Ysh8m', modes: ['tags', 'compare'], note: 'Fiverr search-tag directory (Fiverr own list of search terms) and multi-keyword competition check: total results, price range, page-1 positions.' },
   dionysus: { id: 'dionysus_way/fiverr', build: '1.0.17', buildId:'gHBBb4MRe0UvbW0sv', modes: ['search', 'seller', 'gig'], note: 'Additional seller bios, notable clients where exposed, and textual recent-review summaries.' },
 };
 export function actorInput(adapter, mode, args) {
@@ -9,6 +10,9 @@ export function actorInput(adapter, mode, args) {
   if (mode === 'search' && args.pages) args = { ...args, limit: args.pages * 48 };
   if (mode === 'sellers') args = { ...args, limit: args.usernames.length * 10 };
   const urls = mode === 'seller' || mode === 'sellers' ? (args.usernames || [args.username]).map(u => `https://www.fiverr.com/${u}`) : args.urls;
+  if (adapter === 'vexaloom') return mode === 'tags'
+    ? { mode: 'sitemapDirectory', sitemapType: 'tags', searchKeyword: args.tag_filter, maxShards: 2, maxItems: 500 }
+    : { mode: 'search', searchQueries: args.keywords, maxPagesPerQuery: 1, includeMarketSummary: true, maxItems: args.keywords.length * 50 };
   if (adapter === 'memo23') return { ...(mode === 'search' ? { searchQueries: [args.buyer_need] } : { startUrls: urls }), scrapeDetails: true, maxItems: args.limit, maxItemsPerSearch: args.limit, maxConcurrency: 4 };
   if (adapter === 'logiover') return { mode: mode === 'gig' ? 'gigDetail' : mode, ...(mode === 'search' ? { query: args.buyer_need } : mode === 'seller' ? { seller: args.username } : { gigUrls: urls }), maxResults: args.limit };
   if (adapter === 'dionysus') return { startUrls: mode === 'search' ? [`https://www.fiverr.com/search/gigs?query=${encodeURIComponent(args.buyer_need)}`] : urls, maxItemsPerUrl: Math.max(1, Math.floor(args.limit / (urls?.length || 1))) };

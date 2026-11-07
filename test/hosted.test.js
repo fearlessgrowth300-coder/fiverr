@@ -59,7 +59,7 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const response=await connect({apify_token:'apify_api_test123456789',consent:true});assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
-  assert.equal((await client.listTools()).tools.length,18);
+  assert.equal((await client.listTools()).tools.length,19);
   const started=await client.callTool({name:'find_freelancers',arguments:{workspace_key:connected.workspace_key,buyer_need:'coffee shop logo'}});
   assert.equal(started.structuredContent.result.status,'RUNNING');
   const poll=()=>client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
@@ -103,4 +103,23 @@ test('deep dive checks up to 20 sellers in one run per scraper',async()=>{
   const paid=api.calls.filter(c=>c.paid);
   assert.deepEqual(paid.map(c=>c.adapter),['memo23','dionysus']);
   assert.deepEqual(paid[0].input.startUrls,['https://www.fiverr.com/a1','https://www.fiverr.com/b2','https://www.fiverr.com/c3']);
+});
+
+test('tag directory + keyword competition run on vexaloom; one row per keyword even for shared gigs',async()=>{
+  const api=mockApify(),r=new HostedResearch(api),w={owner:'o',token:'k',userId:'k',storeId:'s'};
+  api.schemaCache.set('vexaloom',{});
+  await r.request(w,'tags',{tag_filter:'music-video'},'gigs');
+  assert.deepEqual(api.calls.filter(c=>c.paid).at(-1).input,{mode:'sitemapDirectory',sitemapType:'tags',searchKeyword:'music-video',maxShards:2,maxItems:500});
+  api.items=async()=>[
+    {recordType:'marketSummary',searchQuery:'ai rap music video',totalResults:812,priceMedian:60},
+    {recordType:'gigListing',searchQuery:'ai rap music video',position:1,gigUrl:'https://www.fiverr.com/a/x',title:'ai rap video',gigTags:[{name:'ai rap'}],attributes:[{type:'style',values:['cinematic']}]},
+    {recordType:'gigListing',searchQuery:'ai christmas music video',position:4,gigUrl:'https://www.fiverr.com/a/x',title:'ai rap video'},
+  ];
+  const s=await r.request(w,'compare',{keywords:['ai rap music video','ai christmas music video']},'gigs');
+  assert.equal(api.calls.filter(c=>c.paid).at(-1).input.searchQueries.length,2);
+  await r.poll(w,s.job_id);
+  const j=await r.job(w,s.job_id),gigs=j.rows.filter(x=>x.kind==='gig');
+  assert.equal(gigs.length,2);
+  assert.equal(j.rows.find(x=>x.kind==='summary').summary.total_results,812);
+  assert.deepEqual([gigs[0].tags,gigs[0].metadata,gigs[0].search_position],[['ai rap'],['style: cinematic'],1]);
 });

@@ -105,7 +105,7 @@ test('MCP discovery, workflow, validation, and research work through official cl
   const client=new Client({name:'integration-test',version:'1'});
   const [ct,st]=InMemoryTransport.createLinkedPair();await server.connect(st);await client.connect(ct);
   t.after(async()=>{await client.close();await server.close();});
-  const tools=await client.listTools();assert.equal(tools.tools.length,18);
+  const tools=await client.listTools();assert.equal(tools.tools.length,19);
   for(const name of ['find_freelancers','get_freelancer_overview','get_seller_profile','get_seller_reviews_summary','list_seller_gigs','list_seller_reviews']) assert.ok(tools.tools.some(x=>x.name===name));
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Logo design'}});assert.ok(brief.structuredContent.result.instructions.includes('1200'));
   const invalid=await client.callTool({name:'find_freelancers',arguments:{workspace_key:'wrong-key-with-at-least-24-characters',buyer_need:'logo design'}});assert.equal(invalid.isError,true);
@@ -148,11 +148,18 @@ test('keyword research: Fiverr autocomplete + seller tags/titles; seller keyword
   const job={id:'j',query:'ai music video',rows:[
     normalize({gigUrl:'https://www.fiverr.com/a/x',title:'create cinematic ai music video for your song',tags:['ai music video','lyric video']}),
     normalize({gigUrl:'https://www.fiverr.com/b/y',title:'make realistic ai music video for your song',tags:['ai music video']})]};
-  const k=await buyerKeywordIdeas('ai music video',job,fake);
+  const k=await buyerKeywordIdeas('ai music video',job,[['direct',fake]]);
   assert.match(k.buyer_search_source,/Fiverr/);
   assert.deepEqual(k.niche_down.map(x=>x.keyword).sort(),['ai music video for birthday','ai rap music video']);
   assert.equal(k.seller_keywords_not_in_buyer_searches.find(x=>x.keyword==='ai music video').gig_tags,2);
   const m=analyzeJob(job);
   assert.equal(m.keyword_patterns.titles_with_exact_seed,2);
   assert.deepEqual(m.keyword_patterns.phrases_after_seed[0],{term:'for your song',gigs:2});
+});
+
+test('Fiverr tag-directory terms count as buyer searches',async()=>{
+  const { buyerKeywordIdeas } = await import('../src/keywords.js');
+  const none=async()=>({ok:false,text:async()=>''});
+  const k=await buyerKeywordIdeas('ai music video',null,[['direct',none]],['ai-birthday-music-video','music-video-editing']);
+  assert.ok(k.niche_down.some(x=>x.keyword==='ai birthday music video'&&x.fiverr_tag_page));
 });

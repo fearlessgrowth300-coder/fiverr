@@ -9,14 +9,17 @@ export function normalize(row) {
   const username = pick(row.sellerName, row.seller_username, row.username, row.seller?.username);
   const profile = row.rowType === 'seller' || row.type === 'seller' || (source && new URL(source).pathname.split('/').filter(Boolean).length === 1);
   const p = row.packages || ['basic','standard','premium'].filter(k => row[`price_${k}`] != null).map(k => ({ tier: k, price: number(row[`price_${k}`]), delivery_days: number(row[`delivery_${k}`]), revisions: number(row[`revisions_${k}`]), features: array(row[`features_${k}`]) }));
+  const nm = v => typeof v === 'object' && v ? (v.name ?? v.title ?? v.slug ?? v.value ?? null) : v;
   return {
-    kind: profile ? 'seller' : 'gig', username, source_url: source,
+    kind: row.recordType === 'tag' ? 'tag' : row.recordType === 'marketSummary' ? 'summary' : profile ? 'seller' : 'gig', username, source_url: source,
+    tag_name: pick(row.tagName), search_query: pick(row.searchQuery), search_position: number(row.position), search_page: number(row.page),
+    summary: row.recordType === 'marketSummary' ? { total_results: number(row.totalResults), sampled: number(row.sampledCount), price_min: number(row.priceMin), price_median: number(row.priceMedian), price_max: number(row.priceMax), seller_levels: row.sellerLevelCounts ?? null, top_countries: row.topSellerCountries ?? null } : null,
     title: profile ? null : pick(row.title), description: pick(row.description),
     category: pick(row.category, row.category_name), subcategory: pick(row.subCategory, row.category_sub),
-    tags: array(row.tags), price_from: number(pick(row.priceFrom, row.price)), currency: pick(row.currency), packages: p,
+    tags: array(pick(row.tags, row.gigTags)).map(nm).filter(Boolean), price_from: number(pick(row.priceFrom, row.price)), currency: pick(row.currency), packages: p,
     gig_rating: profile ? null : number(pick(row.buyingReviewRating, row.rating)), gig_review_count: profile ? null : number(pick(row.buyingReviewsCount, row.reviewsCount)),
     orders_in_queue: number(pick(row.ordersInQueue, row.orders_in_queue)),
-    metadata: row.gigMetadata && typeof row.gigMetadata === 'object' ? Object.entries(row.gigMetadata).flatMap(([k, v]) => [].concat(v).filter(x => x != null && typeof x !== 'object').map(x => `${k}: ${x}`)) : [],
+    metadata: Array.isArray(row.attributes) ? row.attributes.flatMap(a => (a.values || []).map(v => `${a.type}: ${nm(v)}`)) : row.gigMetadata && typeof row.gigMetadata === 'object' ? Object.entries(row.gigMetadata).flatMap(([k, v]) => [].concat(v).filter(x => x != null && typeof x !== 'object').map(x => `${k}: ${x}`)) : [],
     profile: { bio: pick(row.seller_bio, row.bio, profile ? row.description : null), display_name: pick(row.sellerDisplayName,row.seller_name), country: pick(row.sellerCountry,row.seller_country,row.country), languages: array(pick(row.sellerLanguages,row.seller_languages,row.languages)), skills: array(pick(row.sellerSkills,row.seller_skills,row.skills)), level: pick(row.sellerLevel,row.level)?.toString().toLowerCase().replace(/\s+/g,'_') ?? null, notable_clients: array(pick(row.notable_clients,row.notableClients)), rating: number(pick(row.sellerRating,row.seller_rating,profile ? row.rating : null)), review_count: number(pick(row.sellerRatingCount,row.seller_reviews,profile ? row.reviewsCount : null)) },
     images: array(pick(row.images,row.gallery_images,row.gallery)),
     reviews: Array.isArray(row.reviews) ? row.reviews : Array.isArray(row.topReviews) ? row.topReviews : [],

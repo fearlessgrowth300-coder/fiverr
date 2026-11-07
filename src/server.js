@@ -48,7 +48,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
 
   tool('find_freelancers', NO_WEB + ' Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Send 2-5 search keywords a buyer would type (e.g. "ai music video"), never a sentence. Collects Fiverr search pages 1-5 by default; read results 10-50 at a time with job_id+offset until has_next_page=false. If 0 gigs come back, retry with shorter or different keywords before using anything else. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
     workspace_key,
-    buyer_need: z.string().trim().min(3).max(60).refine(v => v.split(/s+/).length <= 5, 'Use 2-5 short keywords exactly as a buyer would type them into the Fiverr search bar, e.g. "ai music video" — not a sentence.').describe('2-5 keywords a buyer types into the Fiverr search bar, e.g. "ai music video", "logo design". NEVER a full sentence: long sentences return 0 gigs.'),
+    buyer_need: z.string().trim().min(3).max(60).refine(v => v.split(/\s+/).length <= 5, 'Use 2-5 short keywords exactly as a buyer would type them into the Fiverr search bar, e.g. "ai music video" — not a sentence.').describe('2-5 keywords a buyer types into the Fiverr search bar, e.g. "ai music video", "logo design". NEVER a full sentence: long sentences return 0 gigs.'),
     pages: z.number().int().min(1).max(5).default(5).describe('How many Fiverr search result pages to collect (~48 gigs each). Default 5 = pages 1-5.'),
     quick: z.boolean().default(false).describe('Cheap competition check for a niche-down keyword: one scraper, no gig-page step (~$0.12 per page). Use with pages=1.'),
     adapter: z.enum(['memo23','logiover','dionysus']).optional().describe('Leave empty to run ALL Fiverr scrapers in parallel and merge results (most gigs). Name one only to re-check a single source.'),
@@ -86,13 +86,41 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     if (!j.rows) throw new Error('Research is still running. Poll get_research_job until research_complete is true.');
     return analyzeJob(j);
   });
-  tool('buyer_keyword_ideas', 'Keyword research. The user service is only the NICHE SEED. Returns what buyers actually type in Fiverr search (Fiverr autocomplete for the seed + a-z + for/with), merged with the tags and title phrases sellers use in a finished find_freelancers job (pass its job_id). Use it to niche down like real buyers (occasion, genre, platform, audience, style) before choosing target_search and the title. Free: no Apify run.', {
-    workspace_key, seed: z.string().trim().min(2).max(60), job_id: z.string().uuid().optional(),
+  const ownJob = async (w, id) => { const j = research.job ? await research.job(w, id) : research.store.state.jobs[id]; if (!j || j.owner !== w.owner) throw new Error('Research job not found in this workspace.'); return j; };
+  tool('buyer_keyword_ideas', 'Keyword research. The user service is only the NICHE SEED. Combines Fiverr own search-tag directory (Apify run, ~$0.15-0.40), search autocomplete, and the tags + title phrases sellers use in a finished find_freelancers job (job_id). First call starts the tag-directory run and returns tags_job_id plus a first list; poll get_research_job, then call again with tags_job_id for the full list. Use it to niche down like real buyers (occasion, genre, platform, audience, style).', {
+    workspace_key, seed: z.string().trim().min(2).max(60), job_id: z.string().uuid().optional(), tags_job_id: z.string().uuid().optional(),
+    tag_filter: z.string().trim().min(2).max(40).optional().describe('Substring of Fiverr tag slugs, e.g. "music-video". Default: last two seed words joined with "-".'),
   }, async args => {
-    const w = auth(args); let j = null;
-    if (args.job_id) { j = research.job ? await research.job(w, args.job_id) : research.store.state.jobs[args.job_id]; if (!j || j.owner !== w.owner) throw new Error('Research job not found in this workspace.'); }
-    return buyerKeywordIdeas(args.seed, j);
-  }, { external: true });
+    const w = auth(args), j = args.job_id ? await ownJob(w, args.job_id) : null;
+    let tags = [], directory;
+    if (args.tags_job_id) {
+      const t = await ownJob(w, args.tags_job_id);
+      if (!t.rows) directory = { tags_job_id: t.id, status: t.status, next_step: 'Still loading: poll get_research_job, then call again with tags_job_id.' };
+      else { tags = t.rows.filter(r => r.kind === 'tag').map(r => r.tag_name).filter(Boolean); directory = { tags_job_id: t.id, fiverr_tags_found: tags.length }; }
+    } else {
+      const filter = args.tag_filter || args.seed.toLowerCase().trim().split(/\s+/).slice(-2).join('-');
+      const r = await research.request(w, 'tags', { tag_filter: filter }, 'gigs');
+      directory = { tags_job_id: r.job_id, status: r.status, tag_filter: filter, next_step: 'Fiverr tag directory is loading: poll get_research_job, then call buyer_keyword_ideas again with tags_job_id.' };
+    }
+    return { fiverr_tag_directory: directory, ...await buyerKeywordIdeas(args.seed, j, undefined, tags) };
+  }, { paid: true, external: true });
+
+  tool('compare_keywords', 'Competition check for 1-10 niche-down buyer keywords in ONE cheap Apify run (~$0.10 + ~$0.05 per keyword): Fiverr total results per keyword, price range, seller-level mix and page-1 gigs with their real search positions. Fewer results and a weaker page 1 (few reviews, few top-rated) = easier to rank. First call starts; poll get_research_job; call again with the same keywords + job_id.', {
+    workspace_key, keywords: z.array(z.string().trim().min(3).max(60).refine(v => v.split(/\s+/).length <= 7, 'Use a buyer search phrase, not a sentence.')).min(1).max(10), job_id: z.string().uuid().optional(),
+  }, async args => {
+    const w = auth(args), r = await research.request(w, 'compare', args, 'gigs');
+    if (!args.job_id || !r.items) return r;
+    const j = await ownJob(w, args.job_id);
+    return { job_id: j.id, untrusted_source_data: true, keywords: args.keywords.map(k => {
+      const rows = j.rows.filter(x => (x.search_query || '').toLowerCase() === k.toLowerCase());
+      const sum = rows.find(x => x.kind === 'summary')?.summary || null;
+      const gigs = rows.filter(x => x.kind === 'gig').sort((a, b) => (a.search_position ?? 999) - (b.search_position ?? 999));
+      const rv = gigs.map(g => g.gig_review_count || 0).sort((a, b) => a - b);
+      return { keyword: k, total_results: sum?.total_results ?? null, price_median: sum?.price_median ?? null, seller_levels: sum?.seller_levels ?? null,
+        page1_gigs: gigs.length, page1_median_reviews: rv.length ? rv[rv.length >> 1] : null, page1_top_rated: gigs.filter(g => /top_rated/.test(g.profile?.level || '')).length,
+        page1_top: gigs.slice(0, 8).map(g => ({ position: g.search_position, title: g.title, url: g.source_url, reviews: g.gig_review_count, price_from: g.price_from, tags: g.tags })) };
+    }), note: 'total_results = how many gigs compete for that Fiverr search. A real buyer search with lower competition is the best target_search.' };
+  }, { paid: true, external: true });
   tool('list_research_jobs', 'List this workspace research jobs so pending work can be resumed after a restart.', { workspace_key }, async args => {
     const w = auth(args);
     if (research.listJobs) return research.listJobs(w);
