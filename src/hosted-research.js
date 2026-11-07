@@ -57,7 +57,7 @@ export class HostedResearch {
     const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):['memo23'];
     const inputs=adapters.map(ad=>actorInput(ad,mode,args));
     for(const ad of adapters) if(!this.apify.schemaCache.has(ad))await this.apify.inspect(ad);
-    const fingerprint=hash(JSON.stringify([adapters,inputs]));
+    const fingerprint=hash(JSON.stringify(['v2',adapters,inputs]));
     const cached=await this.get(w,'query-'+fingerprint,true);
     if(cached && Date.now()-Date.parse(cached.createdAt)<3600000) {
       const j=await this.job(w,cached.id);
