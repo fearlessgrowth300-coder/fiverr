@@ -29,7 +29,7 @@ export class HostedResearch {
   }
   runInfo(j) {return j.runs.map(r=>({actor:r.actor,status:r.status,apify_key:r.a+1,...(r.error?{error:r.error}:{})}));}
   result(j,view,args={}) {
-    if(!j.rows) return {job_id:j.id,status:j.status,actors:this.runInfo(j),next_step:'Poll get_research_job with this job_id. Do not start a new run to poll.'};
+    if(!j.rows) return {job_id:j.id,status:j.status,actors:this.runInfo(j),next_step:'Research is running (10-20 min for 5 pages). Tell the user it is running, then poll get_research_job with this job_id. Do NOT use web search or browse Fiverr meanwhile, and do not start a new run.'};
     return {...viewJob(j,view,args.username,args.offset||0,args.limit||10),actors:this.runInfo(j),partial_results:j.status!=='SUCCEEDED'};
   }
   // Start one Actor, moving to the next Apify key when a key is refused.

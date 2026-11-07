@@ -12,6 +12,7 @@ const adapter = z.enum(['memo23','logiover','dionysus']).default('memo23');
 const pagination = { job_id: z.string().uuid().optional(), offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(50).default(10) };
 const outputSchema = { result: z.record(z.string(), z.unknown()) };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: { result: data } });
+export const NO_WEB = 'RULE: Use ONLY data returned by Gig Studio tools for competitors, titles, tags, prices and reviews. Do NOT use web search, browsing, fiverr.com pages or your own memory for market data. finalize_gig_package refuses any gig that is not built on a finished Gig Studio research job. While research runs (10-20 min) tell the user it is running and keep polling get_research_job.';
 export function createServer({ workspaces, research, apify, authenticate }) {
   const server = new McpServer({ name: 'fiverr-gig-studio', version: '0.1.0' }, { instructions: WORKFLOW });
   const tool = (name, description, inputSchema, handler, { paid = false, external = false } = {}) => server.registerTool(name, {
@@ -21,12 +22,22 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     try { return result(await handler(args)); }
     catch (e) { return { isError: true, content: [{ type: 'text', text: e.message.replace(/apify_api_[\w-]+/g, '[REDACTED]') }] }; }
   });
+  const loadJob = async (w, id) => research.job ? research.job(w, id) : research.store.state.jobs[id];
+  const researchErrors = async (w, g) => {
+    if (!g.search_job_id) return ['Missing search_job_id: run find_freelancers and finish the research first. Web search results are not accepted.'];
+    let j; try { j = await loadJob(w, g.search_job_id); } catch {}
+    if (!j || j.owner !== w.owner) return ['search_job_id is not a research job in this workspace.'];
+    if (!j.rows) return ['Research is still running: keep polling get_research_job until research_complete is true. Do not fill in with web search.'];
+    const gigs = j.rows.filter(r => r.kind === 'gig').length, need = Math.min(5, gigs);
+    const cited = new Set(g.evidence.filter(e => e.job_id === j.id).map(e => e.source_url)).size;
+    return cited < need ? [`Cite at least ${need} gigs from research job ${j.id} in evidence (source_url from find_freelancers results). Web-search sources do not count.`] : [];
+  };
   const rank = async (w, g) => { let j = null; if (g.search_job_id && research.job) { try { j = await research.job(w, g.search_job_id); } catch {} } return scoreDraft(g, j); };
   const auth = args => authenticate ? authenticate(args.workspace_key) : authorize(args.workspace_key, workspaces);
 
-  tool('prepare_gig_brief', 'Start here for creating a Fiverr gig, seller profile about text or skills. Returns the buyer-perspective workflow and complete output requirements. ChatGPT/Claude writes the draft after research.', {
+  tool('prepare_gig_brief', NO_WEB + ' Start here for creating a Fiverr gig, seller profile about text or skills. Returns the buyer-perspective workflow and complete output requirements. ChatGPT/Claude writes the draft after research.', {
     service: z.string().trim().min(3).max(500), seller_facts: z.array(z.string().max(300)).max(20).default([]), known_constraints: z.array(z.string().max(300)).max(20).default([]),
-  }, async args => ({ brief: args, buyer_perspective_question: 'What outcome does a buyer of this service need, and what would make this offer a clear fit?', instructions: WORKFLOW, rules: RULES, next_step: 'Form a concise buyer-language search from this service. Ask the user only if the service itself is ambiguous; leave unsupported constraints unspecified.' }));
+  }, async args => ({ rule: NO_WEB, brief: args, buyer_perspective_question: 'What outcome does a buyer of this service need, and what would make this offer a clear fit?', instructions: WORKFLOW, rules: RULES, next_step: 'Form a concise buyer-language search from this service. Ask the user only if the service itself is ambiguous; leave unsupported constraints unspecified.' }));
 
   tool('discover_research_actors', 'Discover Fiverr-related Apify actors for a missing research aspect. Returns catalog metadata only; does not run or bill an Actor. Only inspected adapters can be executed by this server.', {
     workspace_key, aspect: z.enum(['Fiverr','Fiverr reviews','Fiverr gigs','Fiverr profiles']).default('Fiverr'),
@@ -34,7 +45,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
 
   tool('inspect_research_actor', 'Read the current schema, documented coverage and limitations for an executable Apify adapter. No paid run.', { workspace_key, adapter }, async args => { auth(args); return apify.inspect(args.adapter); }, { external: true });
 
-  tool('find_freelancers', 'Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Send 2-5 search keywords a buyer would type (e.g. "ai music video"), never a sentence. Collects Fiverr search pages 1-5 by default; read results 10-50 at a time with job_id+offset until has_next_page=false. If 0 gigs come back, retry with shorter or different keywords before using anything else. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
+  tool('find_freelancers', NO_WEB + ' Discover and compare Fiverr sellers/gigs for gig creation research or an explicit hiring search. Send 2-5 search keywords a buyer would type (e.g. "ai music video"), never a sentence. Collects Fiverr search pages 1-5 by default; read results 10-50 at a time with job_id+offset until has_next_page=false. If 0 gigs come back, retry with shorter or different keywords before using anything else. Do not send the conversation. Do not invent budget, skills or deadlines from an ambiguous problem. Starts a bounded paid Apify run, or reads a prior job snapshot.', {
     workspace_key,
     buyer_need: z.string().trim().min(3).max(60).refine(v => v.split(/s+/).length <= 5, 'Use 2-5 short keywords exactly as a buyer would type them into the Fiverr search bar, e.g. "ai music video" — not a sentence.').describe('2-5 keywords a buyer types into the Fiverr search bar, e.g. "ai music video", "logo design". NEVER a full sentence: long sentences return 0 gigs.'),
     pages: z.number().int().min(1).max(5).default(5).describe('How many Fiverr search result pages to collect (~48 gigs each). Default 5 = pages 1-5.'),
@@ -66,7 +77,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     workspace_key, urls: z.array(z.string().url().refine(v => !!fiverrUrl(v) && new URL(v).pathname.split('/').filter(Boolean).length === 2, 'Must be a public HTTPS Fiverr gig URL')).min(1).max(5), adapter, ...pagination,
   }, args => research.request(auth(args), 'gig', args, 'gigs'), { paid: true, external: true });
 
-  tool('get_research_job', 'Poll an existing research job and collect its results when finished. Does not start another paid run. Failed runs can contain explicitly partial results.', { workspace_key, job_id: z.string().uuid() }, args => research.poll(auth(args), args.job_id), { external: true });
+  tool('get_research_job', NO_WEB + ' Poll an existing research job and collect its results when finished. Does not start another paid run. Failed runs can contain explicitly partial results.', { workspace_key, job_id: z.string().uuid() }, args => research.poll(auth(args), args.job_id), { external: true });
   tool('analyze_search_results', 'Market summary of EVERY gig a finished find_freelancers job collected (pages 1-5): most common title words/phrases, most used tags, Basic/Standard/Premium price and delivery ranges, seller levels, page-1 gigs, most-reviewed gigs and busiest gigs (orders in queue). Call this first after research_complete=true, then read the gigs one by one in rank order.', { workspace_key, job_id: z.string().uuid() }, async args => {
     const w = auth(args), j = research.job ? await research.job(w, args.job_id) : research.store.state.jobs[args.job_id];
     if (!j || j.owner !== w.owner) throw new Error('Research job not found in this workspace.');
@@ -82,13 +93,13 @@ export function createServer({ workspaces, research, apify, authenticate }) {
 
   tool('validate_gig_package', 'Validate the complete draft and return a ranking_estimate (relevance x click x conversion vs the researched market; raise the weak parts). Checks exactly 78 title characters INCLUDING I will, exactly 5 tags of at most 20 characters, exactly 1200 description characters, packages, FAQ, images, requirements and evidence provenance. Revise until valid.', { workspace_key, gig: gigSchema }, async args => {
     const w = auth(args), v = validateGig(args.gig);
-    if (v.normalized) { v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence)); v.ranking_estimate = await rank(w, v.normalized); }
+    if (v.normalized) { v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence), ...await researchErrors(w, v.normalized)); v.ranking_estimate = await rank(w, v.normalized); }
     v.valid = !v.errors.length;
     const { normalized, ...report } = v; return report;
   });
   tool('finalize_gig_package', 'Return the finished Fiverr gig/profile package as Markdown after successful validation. Does not publish to Fiverr. The host AI must compose the package and verify factual claims first.', { workspace_key, gig: gigSchema }, async args => {
     const w = auth(args), v = validateGig(args.gig);
-    if (v.normalized) v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence));
+    if (v.normalized) v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence), ...await researchErrors(w, v.normalized));
     if (v.errors.length) return { valid:false, errors:v.errors, counts:v.counts };
     return { valid:true, counts:v.counts, warnings:v.warnings, ranking_estimate: await rank(w, v.normalized), markdown:renderGig(v.normalized) };
   });
