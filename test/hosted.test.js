@@ -42,6 +42,7 @@ test('hosted jobs persist across instances without mixing sellers or saving toke
   const next=new HostedResearch(api);
   assert.equal((await next.request(w,'search',args,'gigs')).job_id,started.job_id);
   assert.equal(api.calls.filter(c=>c.paid).length,3); // all three scrapers, once
+  assert.equal((await next.poll(w,started.job_id)).research_complete,false); // step 2: gig pages
   assert.equal((await next.poll(w,started.job_id)).research_complete,true);
   const foreign={owner:'owner-b',token:'account-b',storeId:'store-b'};
   await assert.rejects(()=>next.job(foreign,started.job_id));
@@ -58,10 +59,13 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const response=await connect({apify_token:'apify_api_test123456789',consent:true});assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
-  assert.equal((await client.listTools()).tools.length,15);
+  assert.equal((await client.listTools()).tools.length,16);
   const started=await client.callTool({name:'find_freelancers',arguments:{workspace_key:connected.workspace_key,buyer_need:'coffee shop logo'}});
   assert.equal(started.structuredContent.result.status,'RUNNING');
-  const polled=await client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
+  const poll=()=>client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
+  await poll();const polled=await poll();
+  const market=await client.callTool({name:'analyze_search_results',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
+  assert.equal(market.structuredContent.result.gigs_analyzed,1);assert.equal(market.structuredContent.result.first_page[0].position,1);
   assert.equal(polled.structuredContent.result.research_complete,true);
   assert.equal(api.calls.filter(c=>c.paid)[0].token,'apify_api_test123456789');
 });
@@ -72,6 +76,9 @@ test('search runs every scraper, merges duplicates, and moves to the next key wh
   const started=await r.request(w,'search',{buyer_need:'ai music video',pages:5},'gigs');
   assert.deepEqual(started.actors.map(a=>[a.status,a.apify_key]),[['RUNNING',2],['RUNNING',2],['RUNNING',2]]);
   assert.equal(api.calls.find(c=>c.paid&&c.adapter==='memo23').input.maxItems,240);
+  await r.poll(w,started.job_id);
+  const detail=api.calls.filter(c=>c.paid).at(-1);
+  assert.deepEqual([detail.adapter,detail.input.mode,detail.input.gigUrls],['logiover','gigDetail',['https://www.fiverr.com/seller/example']]);
   const done=await r.poll(w,started.job_id);
   assert.equal(done.research_complete,true);
   assert.equal(done.total_in_snapshot,1); // same gig URL from 3 scrapers merged

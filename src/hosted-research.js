@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ACTORS, actorInput } from './apify.js';
-import { normalize, viewJob, rowsFor } from './normalize.js';
+import { normalize, viewJob, rowsFor, fiverrUrl } from './normalize.js';
 import { hash } from './storage.js';
 
 const terminal=new Set(['SUCCEEDED','FAILED','ABORTED','TIMED-OUT']);
@@ -75,9 +75,30 @@ export class HostedResearch {
       throw new Error(`Research job ${j.id} has an uncertain start. Check Apify Console before retrying; use recover_research_job to avoid duplicate charges.`);
     return this.result(j,view,args);
   }
+  // Merge every run's rows by gig URL. Search runs decide order (best position any scraper saw);
+  // the detail run only fills gaps (tags, description, FAQ, orders in queue).
+  async collect(j,accounts) {
+    const merged=new Map(),loose=[];
+    const runs=[...j.runs].sort((x,y)=>(x.phase==='details')-(y.phase==='details'));
+    for(const r of runs) {
+      if(!r.datasetId) continue;
+      const acc=accounts[r.a]||accounts[0];
+      const items=await this.apify.items(r.datasetId,acc.token,0,1000);
+      items.forEach((raw,i)=>{
+        const row=compact({...normalize(raw),source_actor:r.actor}),idx=r.phase==='details'?Infinity:i;
+        const prev=row.source_url&&merged.get(row.source_url);
+        if(!row.source_url) loose.push(row);
+        else if(!prev) {if(r.phase!=='details')merged.set(row.source_url,{...row,_idx:idx});}
+        else {prev._idx=Math.min(prev._idx,idx);for(const [k,v] of Object.entries(row)) if(prev[k]==null||(Array.isArray(prev[k])&&!prev[k].length)) prev[k]=v;}
+      });
+    }
+    const rows=[...merged.values()].sort((x,y)=>x._idx-y._idx);
+    let n=0;for(const r of rows){delete r._idx;if(r.kind==='gig'){r.position=++n;r.page=Math.ceil(n/48);}}
+    return [...rows,...loose];
+  }
   async poll(w,id) {
     const j=await this.job(w,id),accounts=this.accounts(w);
-    if(j.rows)return {...this.result(j,'gigs'),research_complete:j.status==='SUCCEEDED'};
+    if(j.rows)return {...this.result(j,'gigs'),research_complete:true};
     for(const r of j.runs) {
       if(done(r)||!r.runId) continue;
       const acc=accounts[r.a]||accounts[0];
@@ -85,25 +106,21 @@ export class HostedResearch {
       if(run.userId && run.userId!==acc.userId) throw new Error('Run ownership mismatch.');
       r.status=run.status;r.datasetId=run.defaultDatasetId||r.datasetId;
     }
-    if(j.runs.every(done)) {
-      // Merge all scrapers' rows; same gig URL from several scrapers fills in each other's gaps (e.g. tags).
-      const merged=new Map(),loose=[];
-      for(const r of j.runs) {
-        if(!r.datasetId) continue;
-        const acc=accounts[r.a]||accounts[0];
-        for(const raw of await this.apify.items(r.datasetId,acc.token,0,j.limit)) {
-          const row=compact({...normalize(raw),source_actor:r.actor});
-          const prev=row.source_url&&merged.get(row.source_url);
-          if(!row.source_url) loose.push(row);
-          else if(!prev) merged.set(row.source_url,row);
-          else for(const [k,v] of Object.entries(row)) if(prev[k]==null||(Array.isArray(prev[k])&&!prev[k].length)) prev[k]=v;
-        }
+    if(!j.runs.every(done)) {j.status='RUNNING';await this.put(w,'job-'+j.id,j);return {...this.result(j,'gigs'),stage:j.stage||'searching Fiverr pages',research_complete:false};}
+    // Step 2: after pages 1-5 are collected, open every gig page (in rank order) for tags + full details.
+    if(j.mode==='search'&&!j.detailsStarted) {
+      j.detailsStarted=true;
+      const urls=(await this.collect(j,accounts)).filter(r=>r.kind==='gig'&&r.source_url).slice(0,j.limit).map(r=>r.source_url);
+      if(urls.length) {
+        const d=await this.startRun(w,'logiover',actorInput('logiover','gig',{urls,limit:urls.length}));
+        j.runs.push({...d,phase:'details'});
+        if(!done(d)) {j.status='RUNNING';j.stage=`opening ${urls.length} gig pages for tags, descriptions, prices, FAQ`;await this.put(w,'job-'+j.id,j);return {...this.result(j,'gigs'),stage:j.stage,research_complete:false};}
       }
-      j.rows=[...merged.values(),...loose];j.collectedAt=new Date().toISOString();
-      j.status=j.runs.every(r=>r.status==='SUCCEEDED')?'SUCCEEDED':j.runs.some(r=>r.status==='SUCCEEDED')?'PARTIAL':'FAILED';
-    } else j.status='RUNNING';
+    }
+    j.rows=await this.collect(j,accounts);j.collectedAt=new Date().toISOString();j.stage='complete';
+    j.status=j.runs.every(r=>r.status==='SUCCEEDED')?'SUCCEEDED':j.runs.some(r=>r.status==='SUCCEEDED')?'PARTIAL':'FAILED';
     await this.put(w,'job-'+j.id,j);
-    return {...this.result(j,'gigs'),research_complete:j.status==='SUCCEEDED'||j.status==='PARTIAL'};
+    return {...this.result(j,'gigs'),research_complete:true,next_step:'Call analyze_search_results with this job_id, then read every gig in order with find_freelancers(job_id, offset) until has_next_page=false.'};
   }
   async recover(w,id,runId,confirmedNotStarted) {
     const j=await this.job(w,id),accounts=this.accounts(w);
@@ -143,7 +160,7 @@ export class HostedResearch {
     for(const e of evidence) {
       try {
         if(!cache.has(e.job_id))cache.set(e.job_id,await this.job(w,e.job_id));
-        if(!rowsFor(cache.get(e.job_id)).some(r=>r.source_url===e.source_url))errors.push(`Evidence URL not collected in job ${e.job_id}.`);
+        if(!rowsFor(cache.get(e.job_id)).some(r=>r.source_url===fiverrUrl(e.source_url)))errors.push(`Evidence URL not collected in job ${e.job_id}.`);
       }catch {errors.push(`Evidence job ${e.job_id} unavailable in this workspace.`);}
     }
     return errors;

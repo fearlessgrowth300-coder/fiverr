@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { authorize } from './storage.js';
 import { ACTORS } from './apify.js';
-import { fiverrUrl } from './normalize.js';
+import { fiverrUrl, analyzeJob } from './normalize.js';
 import { gigSchema, validateGig, renderGig } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
 
@@ -55,6 +55,12 @@ export function createServer({ workspaces, research, apify, authenticate }) {
   }, args => research.request(auth(args), 'gig', args, 'gigs'), { paid: true, external: true });
 
   tool('get_research_job', 'Poll an existing research job and collect its results when finished. Does not start another paid run. Failed runs can contain explicitly partial results.', { workspace_key, job_id: z.string().uuid() }, args => research.poll(auth(args), args.job_id), { external: true });
+  tool('analyze_search_results', 'Market summary of EVERY gig a finished find_freelancers job collected (pages 1-5): most common title words/phrases, most used tags, Basic/Standard/Premium price and delivery ranges, seller levels, page-1 gigs, most-reviewed gigs and busiest gigs (orders in queue). Call this first after research_complete=true, then read the gigs one by one in rank order.', { workspace_key, job_id: z.string().uuid() }, async args => {
+    const w = auth(args), j = research.job ? await research.job(w, args.job_id) : research.store.state.jobs[args.job_id];
+    if (!j || j.owner !== w.owner) throw new Error('Research job not found in this workspace.');
+    if (!j.rows) throw new Error('Research is still running. Poll get_research_job until research_complete is true.');
+    return analyzeJob(j);
+  });
   tool('list_research_jobs', 'List this workspace research jobs so pending work can be resumed after a restart.', { workspace_key }, async args => {
     const w = auth(args);
     if (research.listJobs) return research.listJobs(w);
