@@ -100,7 +100,7 @@ export class HostedResearch {
       });
     }
     const rows=[...merged.values()].sort((x,y)=>x._idx-y._idx);
-    let n=0;for(const r of rows){delete r._idx;if(r.kind==='gig'){r.position=++n;r.page=Math.ceil(n/48);}}
+    let n=0;for(const r of rows){delete r._idx;if(r.kind==='gig'){r.position=++n;r.page=n<=j.limit?Math.ceil(n/48):null;if(!r.page)r.extra_from_other_scrapers=true;}}
     return [...rows,...loose];
   }
   async poll(w,id) {
