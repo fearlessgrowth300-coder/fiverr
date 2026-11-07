@@ -59,7 +59,7 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const response=await connect({apify_token:'apify_api_test123456789',consent:true});assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
-  assert.equal((await client.listTools()).tools.length,16);
+  assert.equal((await client.listTools()).tools.length,17);
   const started=await client.callTool({name:'find_freelancers',arguments:{workspace_key:connected.workspace_key,buyer_need:'coffee shop logo'}});
   assert.equal(started.structuredContent.result.status,'RUNNING');
   const poll=()=>client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
@@ -95,4 +95,12 @@ test('seller deep-dive runs memo23 + dionysus and combines the profile',async()=
   await r.poll(w,s.job_id);
   const o=await r.request(w,'seller',{username:'levmusic',job_id:s.job_id},'overview');
   assert.equal(o.profile.country,'US');assert.equal(o.profile.bio,'Producer for 10 years');assert.deepEqual(o.profile.notable_clients,['Sony']);
+});
+
+test('deep dive checks up to 20 sellers in one run per scraper',async()=>{
+  const api=mockApify(),r=new HostedResearch(api),w={owner:'o',token:'k',userId:'k',storeId:'s'};
+  await r.request(w,'sellers',{usernames:['a1','b2','c3']},'gigs');
+  const paid=api.calls.filter(c=>c.paid);
+  assert.deepEqual(paid.map(c=>c.adapter),['memo23','dionysus']);
+  assert.deepEqual(paid[0].input.startUrls,['https://www.fiverr.com/a1','https://www.fiverr.com/b2','https://www.fiverr.com/c3']);
 });

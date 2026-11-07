@@ -2,7 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { authorize } from './storage.js';
 import { ACTORS } from './apify.js';
-import { fiverrUrl, analyzeJob } from './normalize.js';
+import { fiverrUrl, analyzeJob, viewJob, scoreDraft } from './normalize.js';
 import { gigSchema, validateGig, renderGig } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
 
@@ -21,6 +21,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     try { return result(await handler(args)); }
     catch (e) { return { isError: true, content: [{ type: 'text', text: e.message.replace(/apify_api_[\w-]+/g, '[REDACTED]') }] }; }
   });
+  const rank = async (w, g) => { let j = null; if (g.search_job_id && research.job) { try { j = await research.job(w, g.search_job_id); } catch {} } return scoreDraft(g, j); };
   const auth = args => authenticate ? authenticate(args.workspace_key) : authorize(args.workspace_key, workspaces);
 
   tool('prepare_gig_brief', 'Start here for creating a Fiverr gig, seller profile about text or skills. Returns the buyer-perspective workflow and complete output requirements. ChatGPT/Claude writes the draft after research.', {
@@ -50,6 +51,17 @@ export function createServer({ workspaces, research, apify, authenticate }) {
   ];
   for (const [name, view, description] of sellerTools) tool(name, description + ' Reuse job_id to avoid repeated runs.', { workspace_key, username, adapter: z.enum(['memo23','logiover','dionysus']).optional().describe('Leave empty: runs memo23 + dionysus together for profile, gigs, bio, notable clients and reviews.'), ...pagination }, args => research.request(auth(args), 'seller', args, view), { paid: true, external: true });
 
+  tool('deep_dive_competitors', 'Check up to 20 competitor sellers in ONE research run (memo23 + dionysus together): bio, notable clients, skills, country, languages, rating, every gig with prices, review summaries and review samples. Use the deep_dive_candidates from analyze_search_results. First call starts the run; poll get_research_job; then call again with the same usernames + job_id to read all sellers.', {
+    workspace_key, usernames: z.array(username).min(1).max(20), job_id: z.string().uuid().optional(),
+  }, async args => {
+    const w = auth(args), res = await research.request(w, 'sellers', args, 'gigs');
+    if (!args.job_id || !res.items) return res;
+    const j = await research.job(w, args.job_id);
+    return { job_id: j.id, untrusted_source_data: true, sellers: args.usernames.map(u => { const o = viewJob(j, 'overview', u); return { username: u, profile: o.profile,
+      gigs: o.gigs.map(g => ({ title: g.title, url: g.source_url, price_from: g.price_from, gig_rating: g.gig_rating, gig_reviews: g.gig_review_count, packages: (g.packages || []).map(p => ({ tier: p.tier ?? p.title, price: p.price, days: p.durationDays ?? p.deliveryDays })) })),
+      review_summaries: o.review_summaries.slice(0, 5), review_samples: o.review_samples.slice(0, 5).map(x => ({ text: x.review?.text, rating: x.review?.rating, source_url: x.source_url })) }; }) };
+  }, { paid: true, external: true });
+
   tool('get_gig_details', 'Research specific public Fiverr gig URLs: descriptions, packages, prices, tags, images, FAQ and review samples. Useful after seller discovery. Never copies competitors into the draft.', {
     workspace_key, urls: z.array(z.string().url().refine(v => !!fiverrUrl(v) && new URL(v).pathname.split('/').filter(Boolean).length === 2, 'Must be a public HTTPS Fiverr gig URL')).min(1).max(5), adapter, ...pagination,
   }, args => research.request(auth(args), 'gig', args, 'gigs'), { paid: true, external: true });
@@ -68,9 +80,9 @@ export function createServer({ workspaces, research, apify, authenticate }) {
   });
   tool('recover_research_job', 'Recover an uncertain Actor start after a network failure. First inspect Apify Console. Supply the corresponding run ID, or confirm that no run was started. Prevents accidental duplicate billing.', { workspace_key, job_id:z.string().uuid(), run_id:z.string().regex(/^[A-Za-z0-9]+$/).optional(), confirmed_not_started:z.boolean().default(false) }, args => research.recover(auth(args),args.job_id,args.run_id,args.confirmed_not_started), { external:true });
 
-  tool('validate_gig_package', 'Validate the complete draft: exactly 78 title characters INCLUDING I will, exactly 5 tags of at most 20 characters, exactly 1200 description characters, packages, FAQ, images, requirements and evidence provenance. Revise until valid.', { workspace_key, gig: gigSchema }, async args => {
+  tool('validate_gig_package', 'Validate the complete draft and return a ranking_estimate (relevance x click x conversion vs the researched market; raise the weak parts). Checks exactly 78 title characters INCLUDING I will, exactly 5 tags of at most 20 characters, exactly 1200 description characters, packages, FAQ, images, requirements and evidence provenance. Revise until valid.', { workspace_key, gig: gigSchema }, async args => {
     const w = auth(args), v = validateGig(args.gig);
-    if (v.normalized) v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence));
+    if (v.normalized) { v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence)); v.ranking_estimate = await rank(w, v.normalized); }
     v.valid = !v.errors.length;
     const { normalized, ...report } = v; return report;
   });
@@ -78,7 +90,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     const w = auth(args), v = validateGig(args.gig);
     if (v.normalized) v.errors.push(...await research.evidenceErrors(w,v.normalized.evidence));
     if (v.errors.length) return { valid:false, errors:v.errors, counts:v.counts };
-    return { valid:true, counts:v.counts, warnings:v.warnings, markdown:renderGig(v.normalized) };
+    return { valid:true, counts:v.counts, warnings:v.warnings, ranking_estimate: await rank(w, v.normalized), markdown:renderGig(v.normalized) };
   });
   server.registerPrompt('create_fiverr_gig', { description:'Research competitors and draft a complete buyer-focused Fiverr gig.', argsSchema:{ service:z.string() } }, async ({ service }) => ({ messages:[{role:'user',content:{type:'text',text:`Create my Fiverr gig for this service: ${service}\n\n${WORKFLOW}`}}] }));
   server.registerResource('gig-workflow','fiverr-gig://workflow',{ description:'Buyer-focused drafting workflow and field requirements',mimeType:'text/plain' },async()=>({contents:[{uri:'fiverr-gig://workflow',mimeType:'text/plain',text:WORKFLOW}]}));

@@ -55,7 +55,7 @@ export class HostedResearch {
       return this.result(j,view,args);
     }
     // Searches run every Fiverr scraper in parallel unless one is named; other lookups use one.
-    const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):mode==='seller'?['memo23','dionysus']:['memo23'];
+    const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):mode==='seller'||mode==='sellers'?['memo23','dionysus']:['memo23'];
     const inputs=adapters.map(ad=>actorInput(ad,mode,args));
     for(const ad of adapters) if(!this.apify.schemaCache.has(ad))await this.apify.inspect(ad);
     const fingerprint=hash(JSON.stringify(['v2',adapters,inputs]));
@@ -65,7 +65,7 @@ export class HostedResearch {
       if(j.runs.some(r=>!['FAILED','TIMED-OUT','ABORTED'].includes(r.status))) return this.result(j,view,args);
     }
     const j={id:randomUUID(),owner:w.owner,mode,username:args.username,query:mode==='search'?args.buyer_need:undefined,status:'STARTING',createdAt:new Date().toISOString(),
-      limit:mode==='search'&&args.pages?args.pages*48:Math.min(args.limit||10,50),runs:adapters.map(ad=>({adapter:ad,actor:ACTORS[ad].id,status:'STARTING'}))};
+      limit:mode==='search'&&args.pages?args.pages*48:mode==='sellers'?args.usernames.length*10:Math.min(args.limit||10,50),runs:adapters.map(ad=>({adapter:ad,actor:ACTORS[ad].id,status:'STARTING'}))};
     await this.put(w,'job-'+j.id,j);
     await this.put(w,'query-'+fingerprint,{id:j.id,createdAt:j.createdAt});
     j.runs=await Promise.all(adapters.map((ad,i)=>this.startRun(w,ad,inputs[i])));

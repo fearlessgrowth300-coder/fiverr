@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateGig, count } from '../src/validation.js';
 import { Store, hash, authorize } from '../src/storage.js';
-import { normalize, viewJob, fiverrUrl, analyzeJob } from '../src/normalize.js';
+import { normalize, viewJob, fiverrUrl, analyzeJob, scoreGig, scoreDraft } from '../src/normalize.js';
 import { Apify, actorInput } from '../src/apify.js';
 import { Research } from '../src/research.js';
 import { createServer } from '../src/server.js';
@@ -17,7 +17,7 @@ const workspace = { owner:hash(key), token:'test-apify-secret' };
 const fixtureRow = { rowType:'gig', title:'Example service', gigUrl:'https://www.fiverr.com/example/service', sellerName:'example', rating:4.9, reviewsCount:100, sellerRating:4.8, sellerRatingCount:120, priceFrom:25, topReviews:[{text:'Helped clarify my brand',rating:5}] };
 const tier = price => ({ name:'Clear scope', description:'A focused service', price_usd:price, delivery_days:3, revisions:1, deliverables:['One deliverable'], exclusions:['Additional work'] });
 function fixtureGig() {
-  return { profile:{about:'I help buyers with clear service delivery.',skills:['Design'],facts_to_confirm:['Experience']}, title:'I will '+ 'a'.repeat(71), category:'Graphics & Design',subcategory:'Logo Design',category_verified:false,tags:['logo','brand','design','business','identity'],packages:{basic:tier(25),standard:tier(50),premium:tier(100)},pricing_rationale:'Proposed pricing pending scope confirmation.',description:'x'.repeat(1200),faq:[{question:'What is included?',answer:'The stated scope.'}],images:[{headline:'Clear identity',supporting_text:'Business logos',layout:'Large headline',visual_concept:'Original artwork',buyer_relevance:'Clear offer',thumbnail_check:'Readable'}],requirements:[{question:'What is your business?',required:true,response_type:'free_text'}],buyer_hypothesis:'Buyers need an identity.',buyer_check:{real_problem:'Yes',seller_can_fix_it:'Yes',contact_now:'Yes'},evidence:[],limitations:['No live research'],next_question:'What style fits your business?' };
+  return { profile:{about:'I help buyers with clear service delivery.',skills:['Design'],facts_to_confirm:['Experience']}, target_search:'logo design',title:'I will design a logo '+'a'.repeat(57), category:'Graphics & Design',subcategory:'Logo Design',category_verified:false,tags:['logo','brand','design','business','identity'],packages:{basic:tier(25),standard:tier(50),premium:tier(100)},pricing_rationale:'Proposed pricing pending scope confirmation.',description:'x'.repeat(1200),faq:[{question:'What is included?',answer:'The stated scope.'}],images:[{headline:'Clear identity',supporting_text:'Business logos',layout:'Large headline',visual_concept:'Original artwork',buyer_relevance:'Clear offer',thumbnail_check:'Readable'}],requirements:[{question:'What is your business?',required:true,response_type:'free_text'}],buyer_hypothesis:'Buyers need an identity.',buyer_check:{real_problem:'Yes',seller_can_fix_it:'Yes',contact_now:'Yes'},evidence:[],limitations:['No live research'],next_question:'What style fits your business?' };
 }
 function setup(t, config={}) {
   const dir=mkdtempSync(join(tmpdir(),'fiverr-mcp-test-'));
@@ -105,7 +105,7 @@ test('MCP discovery, workflow, validation, and research work through official cl
   const client=new Client({name:'integration-test',version:'1'});
   const [ct,st]=InMemoryTransport.createLinkedPair();await server.connect(st);await client.connect(ct);
   t.after(async()=>{await client.close();await server.close();});
-  const tools=await client.listTools();assert.equal(tools.tools.length,16);
+  const tools=await client.listTools();assert.equal(tools.tools.length,17);
   for(const name of ['find_freelancers','get_freelancer_overview','get_seller_profile','get_seller_reviews_summary','list_seller_gigs','list_seller_reviews']) assert.ok(tools.tools.some(x=>x.name===name));
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Logo design'}});assert.ok(brief.structuredContent.result.instructions.includes('1200'));
   const invalid=await client.callTool({name:'find_freelancers',arguments:{workspace_key:'wrong-key-with-at-least-24-characters',buyer_need:'logo design'}});assert.equal(invalid.isError,true);
@@ -127,4 +127,17 @@ test('market analysis counts title words and one spelling per seller level',()=>
   const m=analyzeJob(job);
   assert.equal(m.title_words.find(w=>w.term==='music').gigs,2);
   assert.deepEqual(m.seller_levels,{top_rated_seller:2});
+});
+
+test('ranking model: focused relevant gig beats a mixed one; title rule; draft vs market',()=>{
+  const base={images:['a','b','c'],packages:[{price:50},{price:100},{price:200}],faq:[1,2,3],gig_review_count:500,gig_rating:4.9,price_from:50};
+  const focused=scoreGig({...base,title:'create an ai music video for your song',tags:['ai music video','music video'],description:'I create ai music video visuals for your song. '.repeat(25)},'ai music video',{basicMedian:75});
+  const mixed=scoreGig({...base,title:'do 3d animation logo and website',tags:['3d animation','logo','website'],description:'Logo, website, 3d and more. '.repeat(40)},'ai music video',{basicMedian:75});
+  assert.ok(focused.final>mixed.final && focused.relevance>0.8 && mixed.relevance<0.2);
+  const g=fixtureGig();g.target_search='ai music video';
+  assert.match(validateGig(g).errors.join(' '),/missing: ai, music, video/);
+  g.target_search='logo design';g.search_job_id='00000000-0000-4000-8000-000000000000';
+  const job={id:'j',query:'logo design',rows:[normalize({gigUrl:'https://www.fiverr.com/a/x',title:'design a modern logo design',tags:['logo design','minimalist logo'],priceFrom:30})]};
+  const d=scoreDraft(validateGig(g).normalized,job);
+  assert.deepEqual(d.vs_market.top_tags_missing,['logo design','minimalist logo']);assert.equal(d.vs_market.market_basic_price_median,30);
 });

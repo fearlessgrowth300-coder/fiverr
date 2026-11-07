@@ -7,7 +7,8 @@ export const ACTORS = {
 export function actorInput(adapter, mode, args) {
   // Fiverr shows ~48 gigs per search page; pages=5 => first five result pages.
   if (mode === 'search' && args.pages) args = { ...args, limit: args.pages * 48 };
-  const urls = mode === 'seller' ? [`https://www.fiverr.com/${args.username}`] : args.urls;
+  if (mode === 'sellers') args = { ...args, limit: args.usernames.length * 10 };
+  const urls = mode === 'seller' || mode === 'sellers' ? (args.usernames || [args.username]).map(u => `https://www.fiverr.com/${u}`) : args.urls;
   if (adapter === 'memo23') return { ...(mode === 'search' ? { searchQueries: [args.buyer_need] } : { startUrls: urls }), scrapeDetails: true, maxItems: args.limit, maxItemsPerSearch: args.limit, maxConcurrency: 4 };
   if (adapter === 'logiover') return { mode: mode === 'gig' ? 'gigDetail' : mode, ...(mode === 'search' ? { query: args.buyer_need } : mode === 'seller' ? { seller: args.username } : { gigUrls: urls }), maxResults: args.limit };
   if (adapter === 'dionysus') return { startUrls: mode === 'search' ? [`https://www.fiverr.com/search/gigs?query=${encodeURIComponent(args.buyer_need)}`] : urls, maxItemsPerUrl: Math.max(1, Math.floor(args.limit / (urls?.length || 1))) };

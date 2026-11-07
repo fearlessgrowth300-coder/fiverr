@@ -5,6 +5,9 @@ const list = z.array(text).min(1).max(30);
 const tier = z.object({ name: text, description: text, price_usd: z.number().min(5), delivery_days: z.number().int().min(1), revisions: z.number().int().min(1), deliverables: list, exclusions: z.array(text).max(20) });
 export const gigSchema = z.object({
   profile: z.object({ about: text, skills: list, facts_to_confirm: z.array(text).max(30) }),
+  target_search: text.max(60).describe('The main buyer search this gig should rank for, e.g. "ai music video".'),
+  search_job_id: z.string().uuid().optional().describe('find_freelancers job_id, to score the draft against that market.'),
+  service_options: z.array(z.object({ option: text, values: z.array(text).min(1) })).max(15).default([]).describe('Fiverr metadata boxes to tick (style, platform, file format...). Buyers filter on these.'),
   title: text,
   category: text, subcategory: text, category_verified: z.boolean(),
   tags: z.array(text).max(20),
@@ -28,6 +31,9 @@ export function validateGig(input) {
   const counts = { title: count(g.title), title_field: count(g.title.replace(/^I will /, '')), description: count(g.description), tags: g.tags.map(count) };
   if (counts.title !== 78) errors.push(`Title must be exactly 78 characters including I will; got ${counts.title}.`);
   if (!g.title.startsWith('I will ')) errors.push('Full title must start with I will followed by a space.');
+  const tw = new Set(g.title.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []), missing = (g.target_search.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(x => !tw.has(x) && !tw.has(x + 's'));
+  if (missing.length) errors.push(`Title is the strongest ranking signal: include every word of the target search "${g.target_search}" (missing: ${missing.join(', ')}).`);
+  if (!g.tags.some(t => t.toLowerCase().includes(g.target_search.toLowerCase()))) warnings.push('No tag contains the exact target search phrase.');
   if (/[&/"+\r\n]/.test(g.title)) errors.push('Title contains unsupported punctuation or a newline.');
   if (counts.description !== 1200) errors.push(`Description must be exactly 1200 characters; got ${counts.description}.`);
   if (g.tags.length !== 5 || new Set(g.tags.map(t => t.toLowerCase())).size !== 5) errors.push('Provide exactly five distinct tags.');
@@ -45,7 +51,7 @@ export function validateGig(input) {
 }
 
 export function renderGig(g) {
-  const lines = ['# Fiverr gig package', '', '## Profile', g.profile.about, '', `Skills: ${g.profile.skills.join(', ')}`, '', 'Confirm: ' + (g.profile.facts_to_confirm.join('; ') || 'No unresolved profile facts supplied.'), '', '## Title', g.title, '', `Paste after Fiverr's I will prefix: ${g.title.slice(7)}`, '', `Category: ${g.category} > ${g.subcategory}${g.category_verified ? '' : ' (confirm in editor)'}`, '', `Tags: ${g.tags.join(' | ')}`, '', '## Packages'];
+  const lines = ['# Fiverr gig package', '', '## Profile', g.profile.about, '', `Skills: ${g.profile.skills.join(', ')}`, '', 'Confirm: ' + (g.profile.facts_to_confirm.join('; ') || 'No unresolved profile facts supplied.'), '', '## Title', g.title, '', `Paste after Fiverr's I will prefix: ${g.title.slice(7)}`, '', `Category: ${g.category} > ${g.subcategory}${g.category_verified ? '' : ' (confirm in editor)'}`, '', ...(g.service_options.length ? ['Service options to tick: ' + g.service_options.map(o => `${o.option}: ${o.values.join(', ')}`).join(' | '), ''] : []), `Target buyer search: ${g.target_search}`, '', `Tags: ${g.tags.join(' | ')}`, '', '## Packages'];
   for (const [key, p] of Object.entries(g.packages)) lines.push('', `### ${key.toUpperCase()} — ${p.name} — $${p.price_usd} USD`, p.description, '', `${p.delivery_days} days; ${p.revisions} revisions`, '', ...p.deliverables.map(x => `- ${x}`), '', `Excludes: ${p.exclusions.join('; ') || 'None specified'}`);
   lines.push('', `Pricing rationale: ${g.pricing_rationale}`, '', '## Description', g.description, '', '## FAQ');
   for (const f of g.faq) lines.push('', `**${f.question}**`, f.answer);
