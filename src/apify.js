@@ -44,7 +44,7 @@ export class Apify {
     for (const key of Object.keys(input)) if (!(key in schema.properties)) throw new Error(`Actor schema changed: unsupported field ${key}. Update adapter before running.`);
     for (const key of schema.required || []) if (!(key in input)) throw new Error(`Actor now requires ${key}; update adapter before running.`);
     const a = ACTORS[adapter];
-    const params = new URLSearchParams({ build: a.build, timeout: '180', memory: '512', maxTotalChargeUsd: String(maxCharge) });
+    const params = new URLSearchParams({ build: a.build, timeout: '900', memory: '512', maxTotalChargeUsd: String(maxCharge) });
     const result = await this.request(`/acts/${a.id.replace('/', '~')}/runs?${params}`, token, { method: 'POST', body: JSON.stringify(input) });
     return result.data;
   }
