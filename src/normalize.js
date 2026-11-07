@@ -16,7 +16,7 @@ export function normalize(row) {
     tags: array(row.tags), price_from: number(pick(row.priceFrom, row.price)), currency: pick(row.currency), packages: p,
     gig_rating: profile ? null : number(pick(row.buyingReviewRating, row.rating)), gig_review_count: profile ? null : number(pick(row.buyingReviewsCount, row.reviewsCount)),
     orders_in_queue: number(pick(row.ordersInQueue, row.orders_in_queue)),
-    profile: { bio: pick(row.seller_bio, row.bio, profile ? row.description : null), display_name: pick(row.sellerDisplayName,row.seller_name), country: pick(row.sellerCountry,row.seller_country,row.country), languages: array(pick(row.sellerLanguages,row.seller_languages,row.languages)), skills: array(pick(row.sellerSkills,row.seller_skills,row.skills)), level: pick(row.sellerLevel,row.level)?.toString().toLowerCase().replace(/s+/g,'_') ?? null, notable_clients: array(pick(row.notable_clients,row.notableClients)), rating: number(pick(row.sellerRating,row.seller_rating,profile ? row.rating : null)), review_count: number(pick(row.sellerRatingCount,row.seller_reviews,profile ? row.reviewsCount : null)) },
+    profile: { bio: pick(row.seller_bio, row.bio, profile ? row.description : null), display_name: pick(row.sellerDisplayName,row.seller_name), country: pick(row.sellerCountry,row.seller_country,row.country), languages: array(pick(row.sellerLanguages,row.seller_languages,row.languages)), skills: array(pick(row.sellerSkills,row.seller_skills,row.skills)), level: pick(row.sellerLevel,row.level)?.toString().toLowerCase().replace(/\s+/g,'_') ?? null, notable_clients: array(pick(row.notable_clients,row.notableClients)), rating: number(pick(row.sellerRating,row.seller_rating,profile ? row.rating : null)), review_count: number(pick(row.sellerRatingCount,row.seller_reviews,profile ? row.reviewsCount : null)) },
     images: array(pick(row.images,row.gallery_images,row.gallery)),
     reviews: Array.isArray(row.reviews) ? row.reviews : Array.isArray(row.topReviews) ? row.topReviews : [],
     review_summary_text: pick(row.recent_reviews_summary),
@@ -51,7 +51,7 @@ export function analyzeJob(job) {
   const inc = (m, k) => m.set(k, (m.get(k) || 0) + 1);
   const words = new Map(), phrases = new Map(), tags = new Map(), levels = new Map(), prices = [[], [], []], days = [[], [], []];
   for (const g of gigs) {
-    const w = (g.title || '').toLowerCase().replace(/^i will /, '').match(/[p{L}p{N}]+/gu) || [];
+    const w = (g.title || '').toLowerCase().replace(/^i will /, '').match(/[\p{L}\p{N}]+/gu) || [];
     new Set(w.filter(x => !STOP.has(x))).forEach(x => inc(words, x));
     new Set(w.slice(1).map((x, i) => w[i] + ' ' + x).filter(b => b.split(' ').some(x => !STOP.has(x)))).forEach(b => inc(phrases, b));
     new Set(g.tags.map(t => t.toLowerCase().trim())).forEach(t => inc(tags, t));

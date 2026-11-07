@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { validateGig, count } from '../src/validation.js';
 import { Store, hash, authorize } from '../src/storage.js';
-import { normalize, viewJob, fiverrUrl } from '../src/normalize.js';
+import { normalize, viewJob, fiverrUrl, analyzeJob } from '../src/normalize.js';
 import { Apify, actorInput } from '../src/apify.js';
 import { Research } from '../src/research.js';
 import { createServer } from '../src/server.js';
@@ -120,4 +120,11 @@ test('search collects Fiverr pages 1-5 (~48 gigs each)',()=>{
 
 test('same gig from different scrapers gets one canonical URL',()=>{
   assert.equal(fiverrUrl('https://fiverr.com/Seller/ai-video/?context_referrer=search&pos=3'),'https://www.fiverr.com/seller/ai-video');
+});
+
+test('market analysis counts title words and one spelling per seller level',()=>{
+  const job={id:'j',rows:[normalize({gigUrl:'https://www.fiverr.com/a/x',title:'create an ai music video',sellerLevel:'Top Rated Seller',tags:['ai music video']}),normalize({gigUrl:'https://www.fiverr.com/b/y',title:'ai music video for your song',sellerLevel:'top_rated_seller'})]};
+  const m=analyzeJob(job);
+  assert.equal(m.title_words.find(w=>w.term==='music').gigs,2);
+  assert.deepEqual(m.seller_levels,{top_rated_seller:2});
 });
