@@ -47,11 +47,13 @@ export async function buyerKeywordIdeas(seed, job, fetchers = [['direct', fetch]
   const list = [...ideas.values()].filter(e => e.buyer_search || e.fiverr_tag_page || e.google_suggest || e.gig_tags > 1 || e.seller_titles > 1)
     .map(e => ({ ...e, signal: (e.buyer_search ? 3 : 0) + (e.fiverr_tag_page ? 3 : 0) + (e.google_suggest ? 1 : 0) + Math.min(e.gig_tags, 10) * 0.5 + Math.min(e.seller_titles, 10) * 0.3 }))
     .sort((a, b) => b.signal - a.signal);
+  const fiverrBacked = e => e.buyer_search || e.fiverr_tag_page || (e.google_suggest && (e.gig_tags > 0 || e.seller_titles > 0));
   return {
     seed, buyer_search_source: source,
-    buyer_searches: list.filter(e => e.buyer_search || e.fiverr_tag_page || e.google_suggest).slice(0, 80),
-    niche_down: list.filter(e => (e.buyer_search || e.fiverr_tag_page || e.google_suggest) && words(e.keyword).length > words(seed).length).slice(0, 50),
+    buyer_searches: list.filter(fiverrBacked).slice(0, 80),
+    niche_down: list.filter(e => fiverrBacked(e) && e.keyword !== seed && words(e.keyword).some(x => seedWords.includes(x))).slice(0, 50),
+    web_searches_unverified: list.filter(e => e.google_suggest && !fiverrBacked(e)).slice(0, 25).map(e => e.keyword),
     seller_keywords_not_in_buyer_searches: list.filter(e => !e.buyer_search && !e.fiverr_tag_page && !e.google_suggest).slice(0, 30),
-    notes: ['fiverr_tag_page=true: Fiverr itself has a search-tag page for it (Fiverr tag directory). buyer_search=true: it appeared in search autocomplete. Neither is a search-volume number.', 'gig_tags / seller_titles count how many collected gigs target the phrase = competition, not demand.', 'Next: think as different buyers (occasion, genre, platform, audience, style), pick 3-8 niche-down keywords and run compare_keywords on them (one cheap run) to compare competition.'],
+    notes: ['web_searches_unverified are Google-only suggestions (often DIY/news); do not use them as Fiverr keywords. fiverr_tag_page=true: Fiverr itself has a search-tag page for it (Fiverr tag directory). buyer_search=true: it appeared in search autocomplete. Neither is a search-volume number.', 'gig_tags / seller_titles count how many collected gigs target the phrase = competition, not demand.', 'Next: think as different buyers (occasion, genre, platform, audience, style), pick 3-8 niche-down keywords and run compare_keywords on them (one cheap run) to compare competition.'],
   };
 }

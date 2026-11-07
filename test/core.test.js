@@ -160,6 +160,6 @@ test('keyword research: Fiverr autocomplete + seller tags/titles; seller keyword
 test('Fiverr tag-directory terms count as buyer searches',async()=>{
   const { buyerKeywordIdeas } = await import('../src/keywords.js');
   const none=async()=>({ok:false,text:async()=>''});
-  const k=await buyerKeywordIdeas('ai music video',null,[['direct',none]],['ai-birthday-music-video','music-video-editing']);
-  assert.ok(k.niche_down.some(x=>x.keyword==='ai birthday music video'&&x.fiverr_tag_page));
+  const k=await buyerKeywordIdeas('ai music video',null,[['direct',none]],['ai-birthday-music-video','gospel-music-video']);
+  assert.deepEqual(k.niche_down.map(x=>x.keyword).sort(),['ai birthday music video','gospel music video']); // same-length genre tags count
 });
