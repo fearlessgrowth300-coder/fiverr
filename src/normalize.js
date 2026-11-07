@@ -67,6 +67,17 @@ export function analyzeJob(job) {
   const top = (m, n) => [...m].sort((a, b) => b[1] - a[1]).slice(0, n).map(([term, count]) => ({ term, gigs: count }));
   const card = g => ({ position: g.position, page: g.page, title: g.title, url: g.source_url, seller: g.username, level: g.profile?.level, gig_rating: g.gig_rating, gig_reviews: g.gig_review_count, orders_in_queue: g.orders_in_queue, price_from: g.price_from, tags: g.tags });
   const by = k => [...gigs].filter(g => g[k] != null).sort((a, b) => b[k] - a[k]).slice(0, 10).map(card);
+  const seedW = (job.query || '').toLowerCase().match(/[\p{L}\p{N}]+/gu) || [], before = new Map(), after = new Map();
+  let exact = 0;
+  for (const g of gigs) {
+    const w = (g.title || '').toLowerCase().replace(/^i will /, '').match(/[\p{L}\p{N}]+/gu) || [];
+    const i = seedW.length ? w.findIndex((_, k) => seedW.every((s, n) => w[k + n] === s || w[k + n] === s + 's')) : -1;
+    if (i < 0) continue;
+    exact++;
+    if (i > 0 && !STOP.has(w[i - 1])) inc(before, w[i - 1]);
+    const tail = w.slice(i + seedW.length, i + seedW.length + 3);
+    if (tail.length) inc(after, tail.join(' '));
+  }
   const basicMedian = stats(prices[0])?.median ?? null;
   const scored = gigs.map(g => ({ ...card(g), score: scoreGig(g, job.query, { basicMedian }) })).sort((a, b) => b.score.final - a.score.final);
   const candidates = [...new Set([...scored, ...by('gig_review_count'), ...by('orders_in_queue')].map(g => g.seller).filter(Boolean))].slice(0, 20);
@@ -74,6 +85,7 @@ export function analyzeJob(job) {
     job_id: job.id, search: job.query, gigs_analyzed: gigs.length, pages_covered: Math.max(0, ...gigs.map(g => g.page || 0)),
     gigs_with_tags: gigs.filter(g => g.tags.length).length, gigs_with_description: gigs.filter(g => g.description).length,
     title_words: top(words, 25), title_phrases: top(phrases, 20), tags: top(tags, 30),
+    keyword_patterns: { seed: job.query, titles_with_exact_seed: exact, words_before_seed: top(before, 15), phrases_after_seed: top(after, 15), note: 'How sellers join keywords around the seed, e.g. [cinematic] + ai music video + [for your song].' },
     prices_usd: { basic: stats(prices[0]), standard: stats(prices[1]), premium: stats(prices[2]) },
     delivery_days: { basic: stats(days[0]), standard: stats(days[1]), premium: stats(days[2]) },
     seller_levels: Object.fromEntries(levels), service_options: top(meta, 20),

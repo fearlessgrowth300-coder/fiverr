@@ -55,7 +55,7 @@ export class HostedResearch {
       return this.result(j,view,args);
     }
     // Searches run every Fiverr scraper in parallel unless one is named; other lookups use one.
-    const adapters=args.adapter?[args.adapter]:mode==='search'?Object.keys(ACTORS):mode==='seller'||mode==='sellers'?['memo23','dionysus']:['memo23'];
+    const adapters=args.adapter?[args.adapter]:mode==='search'?(args.quick?['logiover']:Object.keys(ACTORS)):mode==='seller'||mode==='sellers'?['memo23','dionysus']:['memo23'];
     const inputs=adapters.map(ad=>actorInput(ad,mode,args));
     for(const ad of adapters) if(!this.apify.schemaCache.has(ad))await this.apify.inspect(ad);
     const fingerprint=hash(JSON.stringify(['v2',adapters,inputs]));
@@ -64,7 +64,7 @@ export class HostedResearch {
       const j=await this.job(w,cached.id);
       if(j.runs.some(r=>!['FAILED','TIMED-OUT','ABORTED'].includes(r.status))) return this.result(j,view,args);
     }
-    const j={id:randomUUID(),owner:w.owner,mode,username:args.username,query:mode==='search'?args.buyer_need:undefined,status:'STARTING',createdAt:new Date().toISOString(),
+    const j={id:randomUUID(),owner:w.owner,mode,quick:!!args.quick,username:args.username,query:mode==='search'?args.buyer_need:undefined,status:'STARTING',createdAt:new Date().toISOString(),
       limit:mode==='search'&&args.pages?args.pages*48:mode==='sellers'?args.usernames.length*10:Math.min(args.limit||10,50),runs:adapters.map(ad=>({adapter:ad,actor:ACTORS[ad].id,status:'STARTING'}))};
     await this.put(w,'job-'+j.id,j);
     await this.put(w,'query-'+fingerprint,{id:j.id,createdAt:j.createdAt});
@@ -109,7 +109,7 @@ export class HostedResearch {
     }
     if(!j.runs.every(done)) {j.status='RUNNING';await this.put(w,'job-'+j.id,j);return {...this.result(j,'gigs'),stage:j.stage||'searching Fiverr pages',research_complete:false};}
     // Step 2: after pages 1-5 are collected, open every gig page (in rank order) for tags + full details.
-    if(j.mode==='search'&&!j.detailsStarted) {
+    if(j.mode==='search'&&!j.quick&&!j.detailsStarted) {
       j.detailsStarted=true;
       const urls=(await this.collect(j,accounts)).filter(r=>r.kind==='gig'&&r.source_url).slice(0,j.limit).map(r=>r.source_url);
       if(urls.length) {

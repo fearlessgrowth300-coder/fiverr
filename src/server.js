@@ -5,6 +5,7 @@ import { ACTORS } from './apify.js';
 import { fiverrUrl, analyzeJob, viewJob, scoreDraft } from './normalize.js';
 import { gigSchema, validateGig, renderGig } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
+import { buyerKeywordIdeas } from './keywords.js';
 
 const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
 const username = z.string().regex(/^[A-Za-z0-9_]{2,60}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
@@ -49,6 +50,7 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     workspace_key,
     buyer_need: z.string().trim().min(3).max(60).refine(v => v.split(/s+/).length <= 5, 'Use 2-5 short keywords exactly as a buyer would type them into the Fiverr search bar, e.g. "ai music video" — not a sentence.').describe('2-5 keywords a buyer types into the Fiverr search bar, e.g. "ai music video", "logo design". NEVER a full sentence: long sentences return 0 gigs.'),
     pages: z.number().int().min(1).max(5).default(5).describe('How many Fiverr search result pages to collect (~48 gigs each). Default 5 = pages 1-5.'),
+    quick: z.boolean().default(false).describe('Cheap competition check for a niche-down keyword: one scraper, no gig-page step (~$0.12 per page). Use with pages=1.'),
     adapter: z.enum(['memo23','logiover','dionysus']).optional().describe('Leave empty to run ALL Fiverr scrapers in parallel and merge results (most gigs). Name one only to re-check a single source.'),
     ...pagination,
   }, args => research.request(auth(args), 'search', args, 'gigs'), { paid: true, external: true });
@@ -84,6 +86,13 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     if (!j.rows) throw new Error('Research is still running. Poll get_research_job until research_complete is true.');
     return analyzeJob(j);
   });
+  tool('buyer_keyword_ideas', 'Keyword research. The user service is only the NICHE SEED. Returns what buyers actually type in Fiverr search (Fiverr autocomplete for the seed + a-z + for/with), merged with the tags and title phrases sellers use in a finished find_freelancers job (pass its job_id). Use it to niche down like real buyers (occasion, genre, platform, audience, style) before choosing target_search and the title. Free: no Apify run.', {
+    workspace_key, seed: z.string().trim().min(2).max(60), job_id: z.string().uuid().optional(),
+  }, async args => {
+    const w = auth(args); let j = null;
+    if (args.job_id) { j = research.job ? await research.job(w, args.job_id) : research.store.state.jobs[args.job_id]; if (!j || j.owner !== w.owner) throw new Error('Research job not found in this workspace.'); }
+    return buyerKeywordIdeas(args.seed, j);
+  }, { external: true });
   tool('list_research_jobs', 'List this workspace research jobs so pending work can be resumed after a restart.', { workspace_key }, async args => {
     const w = auth(args);
     if (research.listJobs) return research.listJobs(w);
