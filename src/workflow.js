@@ -30,8 +30,12 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    find_freelancers(job_id, offset, limit) until has_next_page=false before writing.
    analyze_search_results also scores every gig with the ranking model
    (relevance x click x conversion) and lists 20 deep_dive_candidates. Call
-   deep_dive_competitors with all 20 (one run), poll, then read every seller: bio, notable
-   clients, services, prices and what their clients praise or complain about. Work out WHY the
+   deep_dive_competitors with all 20 (free, immediate), then read every seller: bio, notable
+   clients, services, prices and what their clients praise or complain about in real reviews.
+   Call find_sellers_by_level for Level 1 and Level 2 sellers doing well in the niche and read
+   their gigs: they are the realistic reference for a new gig, more than top-rated sellers.
+   Call ask_mira as a seller doing research (what buyers in this niche usually need, what
+   makes an offer fit). Never pose as a buyer or invent a project; no brief is ever submitted. Work out WHY the
    top-scored gigs win: title words, tags, consistency, images, price, packages, FAQ.
    If it returns 0 gigs, retry with shorter/different keywords; do not silently fall back to web
    browsing. Never send the full chat,

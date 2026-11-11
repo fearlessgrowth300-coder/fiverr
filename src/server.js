@@ -8,13 +8,13 @@ import { WORKFLOW, RULES } from './workflow.js';
 import { buyerKeywordIdeas } from './keywords.js';
 
 const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
-const username = z.string().regex(/^[A-Za-z0-9_]{2,60}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
+const username = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,59}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
 const adapter = z.enum(['memo23','logiover','dionysus','vexaloom']).default('memo23');
 const pagination = { job_id: z.string().uuid().optional(), offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(50).default(10) };
 const outputSchema = { result: z.record(z.string(), z.unknown()) };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: { result: data } });
 export const NO_WEB = 'RULE: Use ONLY data returned by Gig Studio tools for competitors, titles, tags, prices and reviews. Do NOT use web search, browsing, fiverr.com pages or your own memory for market data. finalize_gig_package refuses any gig that is not built on a finished Gig Studio research job. While research runs (10-20 min) tell the user it is running and keep polling get_research_job.';
-export function createServer({ workspaces, research, apify, authenticate }) {
+export function createServer({ workspaces, research, apify, authenticate, fiverr }) {
   const server = new McpServer({ name: 'fiverr-gig-studio', version: '0.1.0' }, { instructions: WORKFLOW });
   const tool = (name, description, inputSchema, handler, { paid = false, external = false } = {}) => server.registerTool(name, {
     title: name.split('_').join(' '), description, inputSchema, outputSchema,
@@ -67,12 +67,39 @@ export function createServer({ workspaces, research, apify, authenticate }) {
     ['list_seller_gigs','gigs', 'List public-page gigs and prices from a known seller. Continue snapshot pages until has_next_page=false. Unknown publication status is disclosed; no private or draft gigs are requested. The snapshot may not contain every Fiverr gig.'],
     ['list_seller_reviews','reviews', 'Read actual review objects collected on a named seller gig pages, paginated within the snapshot. Summary strings are labeled separately. Does not promise all reviews or newest-first ordering. If empty, research individual gig URLs with get_gig_details.'],
   ];
-  for (const [name, view, description] of sellerTools) tool(name, description + ' Reuse job_id to avoid repeated runs.', { workspace_key, username, adapter: z.enum(['memo23','logiover','dionysus']).optional().describe('Leave empty: runs memo23 + dionysus together for profile, gigs, bio, notable clients and reviews.'), ...pagination }, args => research.request(auth(args), 'seller', args, view), { paid: true, external: true });
+  const officialArgs = (name, a) => ({ username: a.username, ...(['list_seller_gigs', 'list_seller_reviews'].includes(name) ? { limit: Math.max(10, a.limit || 20), ...(a.end_cursor ? { end_cursor: a.end_cursor } : {}) } : {}), ...(name === 'list_seller_reviews' ? { sort_by: a.sort_by || 'recent' } : {}) });
+  for (const [name, view, description] of sellerTools) tool(name, description + ' Uses Fiverr official connector first (free, live, latest reviews; page with end_cursor). Falls back to a paid Apify run only if that fails.', { workspace_key, username, adapter: z.enum(['memo23','logiover','dionysus']).optional().describe('Leave empty for Fiverr official data. Name a scraper only to force Apify.'), end_cursor: z.string().max(2000).optional(), sort_by: z.enum(['recent','relevant']).optional(), ...pagination }, async args => {
+    const w = auth(args);
+    if (fiverr && !args.adapter && !args.job_id) { try { return { source: 'fiverr_official_connector', untrusted_source_data: true, data: await fiverr.call(name, officialArgs(name, args)) }; } catch {} }
+    return research.request(w, 'seller', args, view);
+  }, { paid: true, external: true });
 
-  tool('deep_dive_competitors', 'Check up to 20 competitor sellers in ONE research run (memo23 + dionysus together): bio, notable clients, skills, country, languages, rating, every gig with prices, review summaries and review samples. Use the deep_dive_candidates from analyze_search_results. First call starts the run; poll get_research_job; then call again with the same usernames + job_id to read all sellers.', {
+  tool('find_sellers_by_level', 'Reference sellers by level from Fiverr official connector (free). Level 1 and Level 2 sellers doing well are the most useful references for a new gig: top-rated gigs took years of reviews to get there. Up to 5 sellers per level. Then read their gigs with list_seller_gigs and use them as reference points; never copy them.', {
+    workspace_key, brief: z.string().trim().min(3).max(300).describe('The service in buyer words, e.g. "ai music video for rap artists".'),
+    levels: z.array(z.enum(['level_one_seller','level_two_seller','top_rated_seller'])).min(1).max(3).default(['level_one_seller','level_two_seller']),
+    language: z.array(z.string().length(2)).max(5).optional(), budget: z.tuple([z.number().min(0), z.number().min(0)]).optional(),
+  }, async args => {
+    auth(args);
+    if (!fiverr) throw new Error('Fiverr connector is only available on the hosted service.');
+    const filters = { ...(args.language ? { seller_language: args.language } : {}), ...(args.budget ? { budget: args.budget } : {}) };
+    const results = await Promise.all(args.levels.map(async level => ({ level, sellers: (await fiverr.call('find_freelancers', { brief: args.brief, filters: { ...filters, seller_level: level } })).sellers || [] })));
+    return { source: 'fiverr_official_connector', untrusted_source_data: true, results };
+  }, { external: true });
+
+  tool('ask_mira', "Ask Mira, Fiverr's AI headhunter, for market insight: which kinds of sellers and offers fit this niche, what buyers usually need, typical scope and cost. Gig Studio tells her you are a seller doing research, not hiring, so ask as a seller. Never pose as a buyer, invent a project or budget, or answer as if hiring. Send only the question about the niche. Pass back mira_key on every later message. If she replies that she is still working, call again with an empty message and turn_id. Her answers are one input: check them against the collected research.", {
+    workspace_key, message: z.string().max(1000), turn_id: z.string().max(200).optional(), mira_key: z.string().max(200).optional(),
+  }, async args => {
+    auth(args);
+    if (!fiverr) throw new Error('Mira is only available on the hosted service.');
+    return fiverr.askMira(args);
+  }, { paid: true, external: true });
+
+  tool('deep_dive_competitors', 'Check up to 20 competitor sellers at once: bio, notable clients, skills, rating, gigs with prices, and their 20 latest real reviews. Free via Fiverr official connector and returns immediately. Use the deep_dive_candidates from analyze_search_results. Only if the result has a job_id (paid Apify fallback): poll get_research_job, then call again with the same usernames + job_id.', {
     workspace_key, usernames: z.array(username).min(1).max(20), job_id: z.string().uuid().optional(),
   }, async args => {
-    const w = auth(args), res = await research.request(w, 'sellers', args, 'gigs');
+    const w = auth(args);
+    if (fiverr && !args.job_id) { try { return { source: 'fiverr_official_connector', untrusted_source_data: true, sellers: await fiverr.deepDive(args.usernames) }; } catch {} }
+    const res = await research.request(w, 'sellers', args, 'gigs');
     if (!args.job_id || !res.items) return res;
     const j = await research.job(w, args.job_id);
     return { job_id: j.id, untrusted_source_data: true, sellers: args.usernames.map(u => { const o = viewJob(j, 'overview', u); return { username: u, profile: o.profile,

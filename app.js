@@ -5,15 +5,16 @@ import { Apify } from './src/apify.js';
 import { Credentials } from './src/credentials.js';
 import { HostedResearch } from './src/hosted-research.js';
 import { createServer } from './src/server.js';
+import { FiverrMcp } from './src/fiverr-mcp.js';
 
-export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTION_KEY}={}) {
+export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTION_KEY,fiverr=new FiverrMcp()}={}) {
   const app=express();app.disable('x-powered-by');
   app.use((req,res,next)=>{
     res.set({'X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer','X-Frame-Options':'DENY','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"});
     if(req.path!=='/'&&!req.path.endsWith('.css')&&!req.path.endsWith('.js'))res.set('Cache-Control','no-store');
     next();
   });
-  app.use(express.json({limit:'192kb'}));
+  app.use(express.json({limit:'212kb'}));
   const creds=()=>new Credentials(secret);
   const research=new HostedResearch(apify);
   const sameOrigin=(req,res,next)=>{
@@ -22,7 +23,7 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
     try {if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'Origin not allowed'});}catch{return res.status(403).json({error:'Invalid origin'});}
     next();
   };
-  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:19}));
+  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:21}));
   app.get('/health',(_req,res)=>res.json({ok:true,service:'fiverr-gig-studio',configured:!!secret}));
   app.post('/api/connect',sameOrigin,async(req,res)=>{
     const raw=req.body?.apify_tokens??[req.body?.apify_token];
@@ -46,7 +47,7 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
   app.post('/mcp',async(req,res)=>{
     const origin=req.get('origin');
     if(origin&&!['https://chatgpt.com','https://claude.ai',`https://${req.get('host')}`,`http://${req.get('host')}`].includes(origin))return res.status(403).json({error:'Origin not allowed'});
-    const server=createServer({research,apify,authenticate:key=>creds().read(key)});
+    const server=createServer({research,apify,fiverr,authenticate:key=>creds().read(key)});
     const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
     res.on('close',()=>{void transport.close();void server.close();});
     try {await server.connect(transport);await transport.handleRequest(req,res,req.body);}

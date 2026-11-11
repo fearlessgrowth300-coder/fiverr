@@ -59,7 +59,7 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const response=await connect({apify_token:'apify_api_test123456789',consent:true});assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
-  assert.equal((await client.listTools()).tools.length,19);
+  assert.equal((await client.listTools()).tools.length,21);
   const started=await client.callTool({name:'find_freelancers',arguments:{workspace_key:connected.workspace_key,buyer_need:'coffee shop logo'}});
   assert.equal(started.structuredContent.result.status,'RUNNING');
   const poll=()=>client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
@@ -135,4 +135,33 @@ test('read progress only advances in order, so finalize can require every gig wa
   const last=await read({offset:10,limit:50});
   assert.deepEqual(last.read_progress,{read:25,total:25,next_offset:null});
   assert.equal(await r.readThrough(w,s.job_id),25);
+});
+
+test('Fiverr connector: free seller data first, Apify fallback, Mira told the truth, no brief tool',async t=>{
+  const { FiverrMcp, MIRA_INTRO } = await import('../src/fiverr-mcp.js');
+  const api=mockApify(),secret=randomBytes(32).toString('hex'),calls=[];let down=false;
+  const fiverr=new FiverrMcp();
+  fiverr.call=async(name,args)=>{calls.push({name,args});if(down)throw new Error('down');return name==='talk_to_mira'?{reply:'hi',status:'done',turnId:'t1',workspaceKey:'mw_1',assistantNote:'x'}:name==='find_freelancers'?{sellers:[{username:'a'}]}:{ok:name};};
+  const listener=makeApp({apify:api,secret,fiverr}).listen(0,'127.0.0.1');await once(listener,'listening');
+  t.after(()=>new Promise(r=>listener.close(r)));
+  const base='http://127.0.0.1:'+listener.address().port;
+  const key=(await (await fetch(base+'/api/connect',{method:'POST',headers:{origin:base,'content-type':'application/json'},body:JSON.stringify({apify_token:'apify_api_test123456789',consent:true})})).json()).workspace_key;
+  const client=new Client({name:'t',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
+  const call=async(name,a)=>(await client.callTool({name,arguments:{workspace_key:key,...a}})).structuredContent.result;
+  const names=(await client.listTools()).tools.map(x=>x.name);
+  assert.ok(names.includes('ask_mira')&&!names.includes('take_brief_to_mira'));
+  const paid=()=>api.calls.filter(c=>c.paid).length;
+  const r=await call('list_seller_reviews',{username:'levmusic'});
+  assert.equal(r.source,'fiverr_official_connector');assert.equal(paid(),0);
+  assert.deepEqual(calls.at(-1).args,{username:'levmusic',limit:10,sort_by:'recent'});
+  const lv=await call('find_sellers_by_level',{brief:'ai music video'});
+  assert.deepEqual(lv.results.map(x=>x.level),['level_one_seller','level_two_seller']);
+  const m=await call('ask_mira',{message:'What do buyers need?'});
+  assert.equal(calls.at(-1).args.message,MIRA_INTRO+'What do buyers need?');assert.equal(m.mira_key,'mw_1');assert.equal(m.assistantNote,undefined);
+  await call('ask_mira',{message:'And pricing?',mira_key:'mw_1'});
+  assert.equal(calls.at(-1).args.message,'And pricing?');
+  assert.ok(calls.every(c=>c.name!=='take_brief_to_mira'));
+  down=true;
+  const fb=await call('get_seller_profile',{username:'levmusic'});
+  assert.equal(fb.status,'RUNNING');assert.ok(paid()>0); // falls back to Apify
 });

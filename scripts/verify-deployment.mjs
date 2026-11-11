@@ -11,7 +11,7 @@ const client=new Client({name:'gig-studio-deployment-check',version:'1'});
 try {
   await client.connect(new StreamableHTTPClientTransport(new URL('/mcp',base)));
   const {tools}=await client.listTools();
-  if(tools.length!==19)throw new Error(`Expected 19 tools, received ${tools.length}.`);
+  if(tools.length!==21)throw new Error(`Expected 21 tools, received ${tools.length}.`);
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Coffee shop logo design'}});
   if(brief.structuredContent?.result?.rules?.title?.exact!==78)throw new Error('Workflow validation failed.');
   const bad=await client.callTool({name:'find_freelancers',arguments:{workspace_key:'invalid-workspace-key-for-live-check',buyer_need:'coffee shop logo'}});
