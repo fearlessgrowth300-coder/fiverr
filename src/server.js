@@ -86,14 +86,6 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     return { source: 'fiverr_official_connector', untrusted_source_data: true, results };
   }, { external: true });
 
-  tool('ask_mira', "Ask Mira, Fiverr's AI headhunter, for market insight: which kinds of sellers and offers fit this niche, what buyers usually need, typical scope and cost. Gig Studio tells her you are a seller doing research, not hiring, so ask as a seller. Never pose as a buyer, invent a project or budget, or answer as if hiring. Send only the question about the niche. Pass back mira_key on every later message. If she replies that she is still working, call again with an empty message and turn_id. Her answers are one input: check them against the collected research.", {
-    workspace_key, message: z.string().max(1000), turn_id: z.string().max(200).optional(), mira_key: z.string().max(200).optional(),
-  }, async args => {
-    auth(args);
-    if (!fiverr) throw new Error('Mira is only available on the hosted service.');
-    return fiverr.askMira(args);
-  }, { paid: true, external: true });
-
   tool('deep_dive_competitors', 'Check up to 20 competitor sellers at once: bio, notable clients, skills, rating, gigs with prices, and their 20 latest real reviews. Free via Fiverr official connector and returns immediately. Use the deep_dive_candidates from analyze_search_results. Only if the result has a job_id (paid Apify fallback): poll get_research_job, then call again with the same usernames + job_id.', {
     workspace_key, usernames: z.array(username).min(1).max(20), job_id: z.string().uuid().optional(),
   }, async args => {

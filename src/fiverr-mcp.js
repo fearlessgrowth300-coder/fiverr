@@ -1,10 +1,8 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 
-// Fiverr's official public MCP connector: free, no sign-in, live seller data and Mira.
+// Fiverr's official public MCP connector: free, no sign-in, live seller data. Its Mira tools are not used: Mira only serves people hiring.
 const URL_ = new URL('https://mcp.fiverr.com/mcp');
-// Sent ahead of the first Mira message: she is told the truth, so no fake hiring need is created.
-export const MIRA_INTRO = "I'm a Fiverr seller doing market research for my own gig. I'm not hiring and won't submit a brief. ";
 // Avatars only bloat what the AI has to read.
 const strip = v => Array.isArray(v) ? v.map(strip) : v && typeof v === 'object'
   ? Object.fromEntries(Object.entries(v).filter(([k]) => !/^(photoUrl|reviewer_image_url|profile_image|avatar)/i.test(k)).map(([k, x]) => [k, strip(x)])) : v;
@@ -20,12 +18,6 @@ export class FiverrMcp {
       if (r.structuredContent) return strip(r.structuredContent);
       try { return strip(JSON.parse(text)); } catch { return { text }; }
     } finally { await c.close().catch(() => {}); }
-  }
-  // Mira, research only. take_brief_to_mira is deliberately not exposed: it would turn this into a real hiring brief.
-  async askMira({ message, turn_id = '', mira_key = '' }) {
-    const r = await this.call('talk_to_mira', { message: message && !mira_key ? MIRA_INTRO + message : message, turn_id, workspace_key: mira_key });
-    return { reply: r.reply, status: r.status, turn_id: r.turnId, mira_key: r.workspaceKey, question: r.widget ?? null, untrusted_source_data: true,
-      note: 'Research only: relay what Mira said. If she offers a brief, quotes or hiring, decline; no brief is ever submitted from Gig Studio.' };
   }
   // Up to 20 sellers, 4 at a time. One seller failing does not lose the others.
   async deepDive(usernames) {
