@@ -151,10 +151,11 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
       const sum = rows.find(x => x.kind === 'summary')?.summary || null;
       const gigs = rows.filter(x => x.kind === 'gig').sort((a, b) => (a.search_position ?? 999) - (b.search_position ?? 999));
       const rv = gigs.map(g => g.gig_review_count || 0).sort((a, b) => a - b), base = gigs.some(g => g.search_position === 0) ? 1 : 0;
-      return { keyword: k, total_results: sum?.total_results ?? null, price_median: sum?.price_median ?? null, seller_levels: sum?.seller_levels ?? null,
+      const demand = rv.reduce((a, b) => a + b, 0), total = sum?.total_results ?? null;
+      return { keyword: k, competition_total_results: total, demand_page1_reviews: demand, demand_per_1000_results: total ? Math.round(demand / total * 1000) : null, total_results: total, price_median: sum?.price_median ?? null, seller_levels: sum?.seller_levels ?? null,
         page1_gigs: gigs.length, page1_median_reviews: rv.length ? rv[rv.length >> 1] : null, page1_top_rated: gigs.some(g => g.profile?.level) ? gigs.filter(g => /top_rated|trs/.test(g.profile?.level || '')).length : null,
         page1_top: gigs.slice(0, 8).map(g => ({ position: g.search_position == null ? null : g.search_position + base, title: g.title, url: g.source_url, reviews: g.gig_review_count, price_from: g.price_from, tags: g.tags })) };
-    }), note: 'total_results = how many gigs compete for that Fiverr search. A real buyer search with lower competition is the best target_search.' };
+    }), note: 'TITLE FORMULA = low competition + high demand + high-traffic related terms. Competition = total_results (lower is easier). Demand = reviews earned by page-1 gigs (buyers are ordering). target_search = the keyword with the best demand_per_1000_results that still has real demand. traffic_terms = the broader, high-traffic terms (most results, most used in page-1 titles/tags) to combine into the same title.' };
   }, { paid: true, external: true });
   tool('list_research_jobs', 'List this workspace research jobs so pending work can be resumed after a restart.', { workspace_key }, async args => {
     const w = auth(args);

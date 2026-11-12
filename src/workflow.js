@@ -8,9 +8,13 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    (birthday, wedding, christmas), genre (rap, gospel), platform (youtube, tiktok, spotify),
    audience (artist, label, kids), style (cinematic, 3d, anime, lip sync). Pick 3-8 niche-down
    buyer searches and run compare_keywords on them in ONE run: total results, page-1 strength
-   and real positions per keyword (fewer/weaker gigs = opportunity). Choose target_search from a real
-   buyer search; build the 78-char title by joining it with other buyer phrases the way top
-   sellers do (analyze_search_results.keyword_patterns); make all 5 tags real buyer searches.
+   and real positions per keyword (fewer/weaker gigs = opportunity).
+   TITLE FORMULA (required): Low Competition + High Demand + combined with high-traffic,
+   algorithm-favoured related terms. target_search = the real buyer search with low competition
+   (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders).
+   traffic_terms = 1-4 high-traffic related terms Fiverr favours (most used in page-1 titles and
+   tags, Fiverr search tags, fiverr_recommends gigs). Combine both into the 78-char title the way
+   top sellers join keywords (analyze_search_results.keyword_patterns); all 5 tags real buyer searches.
 1. Start with prepare_gig_brief for gig/profile creation. Use find_freelancers for discovery,
    browsing, comparisons, or researching competing sellers. Searching like a buyer is the
    method; never contact sellers, submit briefs, hire anyone, or publish a gig.
