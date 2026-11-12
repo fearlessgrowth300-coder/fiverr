@@ -30,7 +30,7 @@ export function validateGig(input) {
   if (!parsed.success) return { valid: false, errors: parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`) };
   const g = parsed.data, errors = [], warnings = [];
   const counts = { title: count(g.title), title_field: count(g.title.replace(/^I will /, '')), description: count(g.description), tags: g.tags.map(count) };
-  if (counts.title !== 78) errors.push(`Title must be exactly 78 characters including I will; got ${counts.title}.`);
+  if (counts.title_field !== 79) errors.push(`Title after 'I will ' must be exactly 79 characters (the Fiverr title box); got ${counts.title_field}.`);
   if (!g.title.startsWith('I will ')) errors.push('Full title must start with I will followed by a space.');
   const tw = new Set(g.title.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []), missing = (g.target_search.toLowerCase().match(/[\p{L}\p{N}]+/gu) || []).filter(x => !tw.has(x) && !tw.has(x + 's'));
   if (missing.length) errors.push(`Title is the strongest ranking signal: include every word of the target search "${g.target_search}" (missing: ${missing.join(', ')}).`);

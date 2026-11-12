@@ -46,7 +46,7 @@ test('HTTP MCP client connects; host/origin and method guards work',async t=>{
   await client.connect(new StreamableHTTPClientTransport(new URL(url+'/mcp')));
   assert.equal((await client.listTools()).tools.length,21);
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Website redesign'}});
-  assert.equal(brief.structuredContent.result.rules.title.exact,78);
+  assert.equal(brief.structuredContent.result.rules.title.exact,79);
   assert.equal((await fetch(url+'/mcp',{method:'GET'})).status,405);
   assert.equal((await fetch(url+'/mcp',{method:'POST',headers:{origin:'https://evil.test','content-type':'application/json'},body:'{}'})).status,403);
   const rejectedHost = await new Promise((resolve,reject)=>{

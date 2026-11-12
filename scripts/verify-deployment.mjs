@@ -13,7 +13,7 @@ try {
   const {tools}=await client.listTools();
   if(tools.length!==21)throw new Error(`Expected 21 tools, received ${tools.length}.`);
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Coffee shop logo design'}});
-  if(brief.structuredContent?.result?.rules?.title?.exact!==78)throw new Error('Workflow validation failed.');
+  if(brief.structuredContent?.result?.rules?.title?.exact!==79)throw new Error('Workflow validation failed.');
   const bad=await client.callTool({name:'find_freelancers',arguments:{workspace_key:'invalid-workspace-key-for-live-check',buyer_need:'coffee shop logo'}});
   if(bad.isError!==true)throw new Error('Unauthenticated research was not rejected.');
   console.log(JSON.stringify({origin:base,health:'passed',homepage:'passed',mcp_initialize:'passed',tools:tools.length,workflow:'passed',invalid_key_rejected:true,paid_runs_started:0},null,2));

@@ -14,7 +14,7 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders, plus
    google_search_volume monthly searches and trend when the seller connected DataForSEO).
    traffic_terms = 1-4 high-traffic related terms Fiverr favours (most used in page-1 titles and
-   tags, Fiverr search tags, fiverr_recommends gigs). Combine both into the 78-char title the way
+   tags, Fiverr search tags, fiverr_recommends gigs). Combine both into the title (79 chars after 'I will') the way
    top sellers join keywords (analyze_search_results.keyword_patterns); all 5 tags real buyer searches.
 1. Start with prepare_gig_brief for gig/profile creation. Use find_freelancers for discovery,
    browsing, comparisons, or researching competing sellers. Searching like a buyer is the
@@ -69,8 +69,8 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    target_search (the main buyer search) and search_job_id, pick service_options buyers filter on
    (see analyze_search_results.service_options), and use validate_gig_package ranking_estimate to
    raise the weakest part before finishing.
-   Compose the complete package: seller profile about + truthful skills; full title exactly
-   78 characters INCLUDING 'I will '; category + subcategory (mark unverified if necessary);
+   Compose the complete package: seller profile about + truthful skills; full title = 'I will ' +
+   exactly 79 characters (count only the text after 'I will '); category + subcategory (mark unverified if necessary);
    exactly 5 distinct short tags, each <=20 characters; Basic/Standard/Premium names,
    descriptions, deliverables, exclusions, USD prices, delivery days and revisions;
    gig description exactly 1200 characters; 1-10 FAQs; 1-3 image briefs with layout,
@@ -96,7 +96,7 @@ needed for this connector, but research requires a configured workspace key and 
 Apify credentials. Missing credentials/data must be reported honestly; never simulate live results.`;
 
 export const RULES = {
-  title: { exact: 78, includesPrefix: 'I will ', counting: 'Unicode code points; use plain English text' },
+  title: { exact: 79, excludesPrefix: 'I will ', counting: 'Unicode code points; use plain English text' },
   description: { exact: 1200, maximum: 1200 },
   tags: { exactCount: 5, maxCharactersEach: 20, note: 'Conservative app limit; confirm acceptance in Fiverr editor.' },
   faq: { min: 1, max: 10 },
