@@ -12,9 +12,9 @@ $('clear-key').onclick=()=>{$('workspace-key').value='';$('connected').hidden=tr
 $('connect-form').onsubmit=async event=>{
   event.preventDefault();const button=$('connect-button');button.disabled=true;message('Verifying your account and creating your workspace…');
   try {
-    const response=await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apify_tokens:$('api-key').value.split(/s+/).filter(Boolean),consent:$('consent').checked})});
+    const response=await fetch('/api/connect',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({apify_tokens:$('api-key').value.split(/\s+/).filter(Boolean),dataforseo_login:$('dfs-login').value.trim(),dataforseo_password:$('dfs-password').value.trim(),consent:$('consent').checked})});
     const data=await response.json();if(!response.ok)throw new Error(data.error||'Connection failed. Try again.');
-    $('api-key').value='';$('workspace-key').value=data.workspace_key;$('account-label').textContent='Connected '+data.keys+' Apify key(s): '+data.account;$('connected').hidden=false;$('connect-form').hidden=true;message('Connected. Copy your workspace key, then add the connector below.');$('workspace-key').focus();
+    $('api-key').value='';$('dfs-login').value='';$('dfs-password').value='';$('workspace-key').value=data.workspace_key;$('account-label').textContent='Connected '+data.keys+' Apify key(s): '+data.account+(data.dataforseo?' + DataForSEO':'');$('connected').hidden=false;$('connect-form').hidden=true;message('Connected. Copy your workspace key, then add the connector below.');$('workspace-key').focus();
   }catch(error){message(error.message,true);}finally{button.disabled=false;}
 };
 fetch('/api/status').then(r=>r.json()).then(s=>{if(s.ready)message('Ready. Connecting your account does not start a paid scrape.');else{$('connect-button').disabled=true;message('Account setup is being configured. Please check back shortly.');}}).catch(()=>message('Unable to check availability. Please refresh.',true));

@@ -11,7 +11,8 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    and real positions per keyword (fewer/weaker gigs = opportunity).
    TITLE FORMULA (required): Low Competition + High Demand + combined with high-traffic,
    algorithm-favoured related terms. target_search = the real buyer search with low competition
-   (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders).
+   (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders, plus
+   google_search_volume monthly searches and trend when the seller connected DataForSEO).
    traffic_terms = 1-4 high-traffic related terms Fiverr favours (most used in page-1 titles and
    tags, Fiverr search tags, fiverr_recommends gigs). Combine both into the 78-char title the way
    top sellers join keywords (analyze_search_results.keyword_patterns); all 5 tags real buyer searches.

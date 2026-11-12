@@ -6,6 +6,7 @@ import { fiverrUrl, analyzeJob, viewJob, scoreDraft } from './normalize.js';
 import { gigSchema, validateGig, renderGig } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
 import { buyerKeywordIdeas } from './keywords.js';
+import { searchVolume } from './dataforseo.js';
 
 const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
 const username = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,59}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
@@ -140,6 +141,14 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     return { fiverr_tag_directory: directory, ...await buyerKeywordIdeas(args.seed, j, undefined, tags) };
   }, { paid: true, external: true });
 
+  tool('google_search_volume', "Real Google monthly search volume, 12-month trend (rising/steady/falling) and peak month for 1-20 buyer keywords, via the seller's own DataForSEO account (about $0.075 per call, any number of keywords). Use it for the HIGH DEMAND part of the title formula, together with compare_keywords (Fiverr competition) and page-1 reviews. Google volume is buyer interest in the service, not Fiverr's internal search count.", {
+    workspace_key, keywords: z.array(z.string().trim().min(2).max(80).refine(v => v.split(/\s+/).length <= 10, 'Max 10 words.')).min(1).max(20),
+    location_code: z.number().int().default(2840).describe('Google Ads location code; 2840 = United States, 2826 = UK, 2124 = Canada, 2036 = Australia.'),
+  }, async args => {
+    const w = auth(args);
+    if (!w.dfs) throw new Error('No DataForSEO account connected. Add your DataForSEO API login and password on the Gig Studio website, then use the new workspace key.');
+    return { source: 'dataforseo_google_ads', ...await searchVolume(w.dfs, [...new Set(args.keywords.map(k => k.toLowerCase()))], args.location_code) };
+  }, { paid: true, external: true });
   tool('compare_keywords', 'Competition check for 1-10 niche-down buyer keywords in ONE cheap Apify run (~$0.10 + ~$0.05 per keyword): Fiverr total results per keyword, price range, seller-level mix and page-1 gigs with their real search positions. Fewer results and a weaker page 1 (few reviews, few top-rated) = easier to rank. First call starts; poll get_research_job; call again with the same keywords + job_id.', {
     workspace_key, keywords: z.array(z.string().trim().min(3).max(60).refine(v => v.split(/\s+/).length <= 7, 'Use a buyer search phrase, not a sentence.')).min(1).max(10), job_id: z.string().uuid().optional(),
   }, async args => {

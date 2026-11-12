@@ -23,13 +23,15 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
     try {if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'Origin not allowed'});}catch{return res.status(403).json({error:'Invalid origin'});}
     next();
   };
-  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:20}));
+  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:21}));
   app.get('/health',(_req,res)=>res.json({ok:true,service:'fiverr-gig-studio',configured:!!secret}));
   app.post('/api/connect',sameOrigin,async(req,res)=>{
     const raw=req.body?.apify_tokens??[req.body?.apify_token];
     const tokens=[...new Set(Array.isArray(raw)?raw.map(t=>typeof t==='string'?t.trim():t).filter(Boolean):[])];
     if(!tokens.length||tokens.length>10||!tokens.every(t=>typeof t==='string'&&/^apify_api_[A-Za-z0-9_-]{10,200}$/.test(t)))return res.status(400).json({error:'Enter 1-10 valid Apify API tokens, one per line.'});
     if(req.body?.consent!==true)return res.status(400).json({error:'Consent is required to connect your Apify account.'});
+    const dl=(req.body?.dataforseo_login||'').trim(),dp=(req.body?.dataforseo_password||'').trim();
+    if((dl||dp)&&!(typeof dl==='string'&&typeof dp==='string'&&dl&&dp&&dl.length<=200&&dp.length<=200))return res.status(400).json({error:'Enter both the DataForSEO API login and API password, or leave both empty.'});
     try {
       const c=creds();
       const accounts=[];
@@ -40,8 +42,8 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
       }
       // Research history is stored on the first key's account; the others are used for runs when earlier keys run out.
       const store=await apify.request('/key-value-stores?name=fiverr-gig-studio',accounts[0].token,{method:'POST'});
-      const key=c.issue({token:accounts[0].token,userId:accounts[0].userId,storeId:store.data.id,accounts:accounts.map(({token,userId})=>({token,userId}))});
-      res.json({workspace_key:key,expires_in_days:90,account:accounts.map(a=>a.username||'account').join(', '),keys:accounts.length});
+      const key=c.issue({token:accounts[0].token,userId:accounts[0].userId,storeId:store.data.id,accounts:accounts.map(({token,userId})=>({token,userId})),...(dl?{dfs:{login:dl,password:dp}}:{})});
+      res.json({workspace_key:key,expires_in_days:90,account:accounts.map(a=>a.username||'account').join(', '),keys:accounts.length,dataforseo:!!dl});
     }catch(e){res.status(e.status===401?401:400).json({error:e.message.startsWith('WORKSPACE_')?'Workspace setup is not enabled yet. Contact the site owner.':e.message});}
   });
   app.post('/mcp',async(req,res)=>{

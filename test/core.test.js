@@ -105,7 +105,7 @@ test('MCP discovery, workflow, validation, and research work through official cl
   const client=new Client({name:'integration-test',version:'1'});
   const [ct,st]=InMemoryTransport.createLinkedPair();await server.connect(st);await client.connect(ct);
   t.after(async()=>{await client.close();await server.close();});
-  const tools=await client.listTools();assert.equal(tools.tools.length,20);
+  const tools=await client.listTools();assert.equal(tools.tools.length,21);
   for(const name of ['find_freelancers','get_freelancer_overview','get_seller_profile','get_seller_reviews_summary','list_seller_gigs','list_seller_reviews']) assert.ok(tools.tools.some(x=>x.name===name));
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Logo design'}});assert.ok(brief.structuredContent.result.instructions.includes('1200'));
   const invalid=await client.callTool({name:'find_freelancers',arguments:{workspace_key:'wrong-key-with-at-least-24-characters',buyer_need:'logo design'}});assert.equal(invalid.isError,true);
@@ -171,4 +171,14 @@ test('vexaloom gig-detail rows map reviews, tags, packages and seller fields',()
   assert.deepEqual([g.source_url,g.username,g.description,g.price_from,g.tags,g.images.length],['https://www.fiverr.com/lev/ai-video','lev','Full text',50,['ai music video'],1]);
   assert.deepEqual([g.reviews[0].text,g.reviews[0].author,g.reviews[0].country],['Great video','bob','US']);
   assert.deepEqual([g.profile.rating,g.profile.country,g.profile.notable_clients],[4.9,'IL',['Sony']]);
+});
+
+test('DataForSEO: search volume, trend and peak month parsed; errors surfaced',async()=>{
+  const { searchVolume } = await import('../src/dataforseo.js');
+  const months=[900,800,700,300,300,300,300,300,300,300,300,1000].map((v,i)=>({year:2026,month:10-i>0?10-i:22-i,search_volume:v}));
+  const ok=async(url,o)=>{assert.match(o.headers.authorization,/^Basic /);assert.deepEqual(JSON.parse(o.body)[0].keywords,['ai music video']);return {ok:true,status:200,json:async()=>({status_code:20000,cost:0.075,tasks:[{status_code:20000,result:[{keyword:'ai music video',search_volume:2400,competition:'LOW',cpc:1.2,monthly_searches:months}]}]})};};
+  const r=await searchVolume({login:'a',password:'b'},['ai music video'],2840,ok);
+  assert.equal(r.keywords[0].google_monthly_searches,2400);assert.equal(r.keywords[0].trend,'rising');assert.equal(r.keywords[0].peak_month,'2026-11');
+  const bad=async()=>({ok:true,status:200,json:async()=>({status_code:20000,tasks:[{status_code:40104,status_message:'Please verify your account'}]})});
+  await assert.rejects(searchVolume({login:'a',password:'b'},['x'],2840,bad),/verify your account/);
 });
