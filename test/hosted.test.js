@@ -149,13 +149,15 @@ test('Fiverr connector: free seller data first, Apify fallback, no Mira tools',a
   const client=new Client({name:'t',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
   const call=async(name,a)=>(await client.callTool({name,arguments:{workspace_key:key,...a}})).structuredContent.result;
   const names=(await client.listTools()).tools.map(x=>x.name);
-  assert.ok(names.includes('find_sellers_by_level')&&!names.some(n=>/mira/.test(n)));
+  assert.ok(names.includes('fiverr_recommends')&&!names.some(n=>/mira/.test(n)));
   const paid=()=>api.calls.filter(c=>c.paid).length;
   const r=await call('list_seller_reviews',{username:'levmusic'});
   assert.equal(r.source,'fiverr_official_connector');assert.equal(paid(),0);
   assert.deepEqual(calls.at(-1).args,{username:'levmusic',limit:10,sort_by:'recent'});
-  const lv=await call('find_sellers_by_level',{brief:'ai music video'});
-  assert.deepEqual(lv.results.map(x=>x.level),['level_one_seller','level_two_seller']);
+  const lv=await call('fiverr_recommends',{briefs:['ai music video for my birthday','lyric video for rap song']});
+  assert.deepEqual(lv.results.map(x=>x.level),['any','level_one_seller','level_two_seller','any','level_one_seller','level_two_seller']);
+  assert.equal(lv.most_recommended[0].username,'a');assert.equal(lv.most_recommended[0].for_briefs.length,2);
+  assert.deepEqual(lv.most_recommended[0].gigs,{ok:'list_seller_gigs'});
   down=true;
   const fb=await call('get_seller_profile',{username:'levmusic'});
   assert.equal(fb.status,'RUNNING');assert.ok(paid()>0); // falls back to Apify

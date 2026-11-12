@@ -74,16 +74,27 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     return research.request(w, 'seller', args, view);
   }, { paid: true, external: true });
 
-  tool('find_sellers_by_level', 'Reference sellers by level from Fiverr official connector (free). Level 1 and Level 2 sellers doing well are the most useful references for a new gig: top-rated gigs took years of reviews to get there. Up to 5 sellers per level. Then read their gigs with list_seller_gigs and use them as reference points; never copy them.', {
-    workspace_key, brief: z.string().trim().min(3).max(300).describe('The service in buyer words, e.g. "ai music video for rap artists".'),
-    levels: z.array(z.enum(['level_one_seller','level_two_seller','top_rated_seller'])).min(1).max(3).default(['level_one_seller','level_two_seller']),
+  tool('fiverr_recommends', "Search Fiverr AS A BUYER and see who Fiverr's own matching recommends (official connector, free). Send 3-8 different buyer requests for the niche, written the way real buyers ask (e.g. 'ai music video for my birthday', 'lyric video for my rap song on youtube'). For each request it returns Fiverr's recommended sellers in Fiverr's order, for any level and per level (Level 1 and Level 2 doing well are the realistic reference for a new gig). most_recommended = sellers Fiverr shows for many buyer requests: their gigs are what Fiverr ranks for this niche. Their gigs are included: study title, tags, packages, prices and why they match the buyer, then build an original gig. Never copy, contact sellers, or hire.", {
+    workspace_key, briefs: z.array(z.string().trim().min(3).max(300)).min(1).max(8).describe('Buyer requests in buyer words, one buyer type each.'),
+    levels: z.array(z.enum(['any','level_one_seller','level_two_seller','top_rated_seller'])).min(1).max(4).default(['any','level_one_seller','level_two_seller']),
     language: z.array(z.string().length(2)).max(5).optional(), budget: z.tuple([z.number().min(0), z.number().min(0)]).optional(),
   }, async args => {
     auth(args);
     if (!fiverr) throw new Error('Fiverr connector is only available on the hosted service.');
-    const filters = { ...(args.language ? { seller_language: args.language } : {}), ...(args.budget ? { budget: args.budget } : {}) };
-    const results = await Promise.all(args.levels.map(async level => ({ level, sellers: (await fiverr.call('find_freelancers', { brief: args.brief, filters: { ...filters, seller_level: level } })).sellers || [] })));
-    return { source: 'fiverr_official_connector', untrusted_source_data: true, results };
+    const base = { ...(args.language ? { seller_language: args.language } : {}), ...(args.budget ? { budget: args.budget } : {}) };
+    // ponytail: 6 calls at a time; raise if Fiverr's connector allows more.
+    const pool = async (items, fn) => { const out = []; for (let i = 0; i < items.length; i += 6) out.push(...await Promise.all(items.slice(i, i + 6).map(fn))); return out; };
+    const jobs = args.briefs.flatMap(brief => args.levels.map(level => ({ brief, level })));
+    const results = await pool(jobs, async ({ brief, level }) => {
+      try { return { brief, level, sellers: (await fiverr.call('find_freelancers', { brief, filters: level === 'any' ? base : { ...base, seller_level: level } })).sellers || [] }; }
+      catch (e) { return { brief, level, sellers: [], error: e.message }; }
+    });
+    if (results.every(r => r.error)) throw new Error('Fiverr connector unavailable.');
+    const tally = new Map();
+    for (const r of results) r.sellers.forEach((s, i) => { const u = s.username || s.sellerName; if (!u) return; const t = tally.get(u) || { username: u, times_recommended: 0, best_position: 99, for_briefs: new Set() }; t.times_recommended++; t.best_position = Math.min(t.best_position, i + 1); t.for_briefs.add(r.brief); tally.set(u, t); });
+    const most = [...tally.values()].map(t => ({ ...t, for_briefs: [...t.for_briefs] })).sort((a, b) => b.for_briefs.length - a.for_briefs.length || b.times_recommended - a.times_recommended || a.best_position - b.best_position).slice(0, 20);
+    const gigs = await pool(most, async t => { try { return { username: t.username, gigs: await fiverr.call('list_seller_gigs', { username: t.username, limit: 10 }) }; } catch { return { username: t.username, gigs: null }; } });
+    return { source: 'fiverr_official_connector', untrusted_source_data: true, most_recommended: most.map((t, i) => ({ ...t, gigs: gigs[i].gigs })), results };
   }, { external: true });
 
   tool('deep_dive_competitors', 'Check up to 20 competitor sellers at once: bio, notable clients, skills, rating, gigs with prices, and their 20 latest real reviews. Free via Fiverr official connector and returns immediately. Use the deep_dive_candidates from analyze_search_results. Only if the result has a job_id (paid Apify fallback): poll get_research_job, then call again with the same usernames + job_id.', {

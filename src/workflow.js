@@ -12,8 +12,8 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    buyer search; build the 78-char title by joining it with other buyer phrases the way top
    sellers do (analyze_search_results.keyword_patterns); make all 5 tags real buyer searches.
 1. Start with prepare_gig_brief for gig/profile creation. Use find_freelancers for discovery,
-   browsing, comparisons, or researching competing sellers. Do not pretend to be a real buyer,
-   contact sellers, hire anyone, or publish a gig. There is no Fiverr Headhunter integration.
+   browsing, comparisons, or researching competing sellers. Searching like a buyer is the
+   method; never contact sellers, submit briefs, hire anyone, or publish a gig.
 2. Privately consider one short question: What does a buyer of THIS service want to achieve,
    and what would convince them this offer fits? Summarize the answer as a buyer hypothesis,
    not a claimed fact. Do not expose private chain-of-thought. When the service itself is
@@ -32,8 +32,9 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    (relevance x click x conversion) and lists 20 deep_dive_candidates. Call
    deep_dive_competitors with all 20 (free, immediate), then read every seller: bio, notable
    clients, services, prices and what their clients praise or complain about in real reviews.
-   Call find_sellers_by_level for Level 1 and Level 2 sellers doing well in the niche and read
-   their gigs: they are the realistic reference for a new gig, more than top-rated sellers. Work out WHY the
+   Call fiverr_recommends with 3-8 niche-down buyer requests (different buyer types) to see
+   which sellers and gigs Fiverr itself recommends to buyers, at any level and Level 1/Level 2
+   (the realistic reference for a new gig). most_recommended gigs show what Fiverr ranks here. Work out WHY the
    top-scored gigs win: title words, tags, consistency, images, price, packages, FAQ.
    If it returns 0 gigs, retry with shorter/different keywords; do not silently fall back to web
    browsing. Never send the full chat,
