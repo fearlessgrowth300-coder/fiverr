@@ -22,7 +22,7 @@ test('stdio client can initialize, list tools and receive honest credential erro
   const transport=new StdioClientTransport({command:process.execPath,args:[entry,'--stdio'],env,stderr:'pipe'});
   t.after(()=>client.close());
   await client.connect(transport);
-  assert.equal((await client.listTools()).tools.length,21);
+  assert.equal((await client.listTools()).tools.length,22);
   const r=await client.callTool({name:'find_freelancers',arguments:{workspace_key:env.WORKSPACE_KEY,buyer_need:'coffee shop logo'}});
   assert.equal(r.isError,true);assert.match(r.content[0].text,/APIFY_TOKEN/);
   assert.equal((await client.listPrompts()).prompts[0].name,'create_fiverr_gig');
@@ -44,7 +44,7 @@ test('HTTP MCP client connects; host/origin and method guards work',async t=>{
   const client=new Client({name:'http-test',version:'1'});
   t.after(()=>client.close());
   await client.connect(new StreamableHTTPClientTransport(new URL(url+'/mcp')));
-  assert.equal((await client.listTools()).tools.length,21);
+  assert.equal((await client.listTools()).tools.length,22);
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Website redesign'}});
   assert.equal(brief.structuredContent.result.rules.title.exact,79);
   assert.equal((await fetch(url+'/mcp',{method:'GET'})).status,405);

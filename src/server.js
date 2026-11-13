@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { authorize } from './storage.js';
 import { ACTORS } from './apify.js';
 import { fiverrUrl, analyzeJob, viewJob, scoreDraft } from './normalize.js';
-import { gigSchema, validateGig, renderGig } from './validation.js';
+import { gigSchema, validateGig, renderGig, SECTIONS } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
 import { buyerKeywordIdeas } from './keywords.js';
 import { searchVolume } from './dataforseo.js';
@@ -33,6 +33,14 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     const gigs = j.rows.filter(r => r.kind === 'gig').length, need = Math.min(5, gigs);
     const cited = new Set(g.evidence.filter(e => e.job_id === j.id).map(e => e.source_url)).size;
     const errs = cited < need ? [`Cite at least ${need} gigs from research job ${j.id} in evidence (source_url from find_freelancers results). Web-search sources do not count.`] : [];
+    const urls = new Set(j.rows.map(r => r.source_url).filter(Boolean)), tools = /^(compare_keywords|google_search_volume|analyze_search_results|fiverr_recommends|deep_dive_competitors|list_seller_reviews|list_seller_gigs|buyer_keyword_ideas)$/;
+    for (const s of SECTIONS) for (const p of g.proof[s]) if (!tools.test(p.source) && !urls.has(fiverrUrl(p.source) || p.source)) errs.push(`proof.${s}: "${p.source.slice(0, 80)}" is not a gig from research job ${j.id} or a Gig Studio tool. Use real research only.`);
+    if (!g.keyword_job_id) errs.push('Missing keyword_job_id: check target_search, traffic_terms and fiverr_terms on Fiverr with compare_keywords (competition), and google_search_volume (demand) if connected.');
+    else {
+      let k; try { k = await loadJob(w, g.keyword_job_id); } catch {}
+      if (!k || k.owner !== w.owner || k.mode !== 'compare' || !k.rows) errs.push('keyword_job_id must be a finished compare_keywords job in this workspace.');
+      else { const checked = new Set(k.rows.map(r => (r.search_query || '').toLowerCase())); const unchecked = [g.target_search, ...g.traffic_terms, ...g.fiverr_terms].filter(t => !checked.has(t.toLowerCase())); if (unchecked.length) errs.push(`Check these keywords on Fiverr with compare_keywords first (competition): ${unchecked.join(', ')}.`); }
+    }
     if (research.readThrough) {
       const total = viewJob(j, 'gigs', undefined, 0, 1).total_in_snapshot, read = await research.readThrough(w, j.id);
       if (read < total) errs.push(`Read every collected gig first: you have read ${read} of ${total}. Call find_freelancers with job_id ${j.id}, offset ${read}, limit 50 and continue until has_next_page=false.`);
@@ -172,6 +180,26 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     return { jobs: Object.values(research.store.state.jobs).filter(j => j.owner === w.owner).slice(-50).map(j => ({ job_id:j.id, status:j.status, actor:j.actor, mode:j.mode, username:j.username, buyer_need:j.query, created_at:j.createdAt })) };
   });
   tool('recover_research_job', 'Recover an uncertain Actor start after a network failure. First inspect Apify Console. Supply the corresponding run ID, or confirm that no run was started. Prevents accidental duplicate billing.', { workspace_key, job_id:z.string().uuid(), run_id:z.string().regex(/^[A-Za-z0-9]+$/).optional(), confirmed_not_started:z.boolean().default(false) }, args => research.recover(auth(args),args.job_id,args.run_id,args.confirmed_not_started), { external:true });
+
+  // Competitor thumbnails as real images so the AI can look at what buyers scroll past.
+  server.registerTool('view_competitor_images', { title: 'view competitor images', description: 'SEE the main gig images of ranking competitors (page-1 order or top-scored) from a finished research job, as images. Study what makes buyers stop scrolling: big readable text, faces/emotion, before-after, colours, contrast. Then design an original image that stands out from all of them. Never copy.', inputSchema: { workspace_key, job_id: z.string().uuid(), order: z.enum(['page1', 'top_scored']).default('page1'), count: z.number().int().min(1).max(10).default(8) }, annotations: { readOnlyHint: true, openWorldHint: true } }, async args => {
+    try {
+      const w = auth(args), j = await ownJob(w, args.job_id);
+      if (!j.rows) throw new Error('Research is still running: poll get_research_job first.');
+      const gigs = args.order === 'top_scored' ? analyzeJob(j).top_scored.map(c => j.rows.find(r => r.source_url === c.url)).filter(Boolean) : j.rows.filter(r => r.kind === 'gig' && r.images?.length).sort((a, b) => (a.position ?? 999) - (b.position ?? 999));
+      const content = [];
+      for (const g of gigs.filter(g => g.images?.length).slice(0, args.count)) {
+        try {
+          const r = await fetch(g.images[0], { signal: AbortSignal.timeout(10000) }), type = r.headers.get('content-type') || '';
+          const buf = Buffer.from(await r.arrayBuffer());
+          if (!r.ok || !/^image\/(jpeg|png|webp|gif)/.test(type) || buf.length > 800000) continue;
+          content.push({ type: 'text', text: `#${g.position ?? '?'} ${g.title} | ${g.gig_review_count ?? 0} reviews | ${g.source_url}` }, { type: 'image', data: buf.toString('base64'), mimeType: type.split(';')[0] });
+        } catch {}
+      }
+      if (!content.length) throw new Error('No competitor images could be loaded from this job.');
+      return { content };
+    } catch (e) { return { isError: true, content: [{ type: 'text', text: e.message }] }; }
+  });
 
   tool('validate_gig_package', 'Validate the complete draft and return a ranking_estimate (relevance x click x conversion vs the researched market; raise the weak parts). Checks the title is "I will " + exactly 79 characters, exactly 5 tags of at most 20 characters, exactly 1200 description characters, packages, FAQ, images, requirements and evidence provenance. Revise until valid.', { workspace_key, gig: gigSchema }, async args => {
     const w = auth(args), v = validateGig(args.gig);

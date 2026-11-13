@@ -23,7 +23,7 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
     try {if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'Origin not allowed'});}catch{return res.status(403).json({error:'Invalid origin'});}
     next();
   };
-  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:21}));
+  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:22}));
   app.get('/health',(_req,res)=>res.json({ok:true,service:'fiverr-gig-studio',configured:!!secret}));
   app.post('/api/connect',sameOrigin,async(req,res)=>{
     const raw=req.body?.apify_tokens??[req.body?.apify_token];

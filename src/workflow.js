@@ -13,6 +13,11 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    algorithm-favoured related terms. target_search = the real buyer search with low competition
    (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders, plus
    google_search_volume monthly searches and trend when the seller connected DataForSEO).
+   KEYWORD LOOP (required): put every candidate - Google keywords, Fiverr search tags, seller tags,
+   fiverr_recommends titles - back through compare_keywords (Fiverr competition) and
+   google_search_volume (demand). Pass that job as keyword_job_id. Four keyword groups:
+   target_search (low competition + high demand), traffic_terms (high traffic), fiverr_terms
+   (algorithm-favoured: most used in ranking gigs' tags/titles and Fiverr's tag directory), tags.
    traffic_terms = 1-4 high-traffic related terms Fiverr favours (most used in page-1 titles and
    tags, Fiverr search tags, fiverr_recommends gigs). Combine both into the title (79 chars after 'I will') the way
    top sellers join keywords (analyze_search_results.keyword_patterns); all 5 tags real buyer searches.
@@ -76,7 +81,21 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    gig description exactly 1200 characters; 1-10 FAQs; 1-3 image briefs with layout,
    headline, supporting text, original visual concept, thumbnail readability and buyer
    relevance; buyer requirements; and one useful next question.
-8. Write the description around the buyer's problem, outcome, concrete scope, process,
+8. DESCRIPTION (exactly 1200 chars) must contain target_search, every traffic_term, fiverr_term
+   and tag, woven in naturally. Write it as the buyer's story: (1) their problem in their own
+   words from real reviews, felt emotionally; (2) the transformation - before and after ordering;
+   (3) how this seller solves it (scope, process, truthful proof); (4) value over price - what the
+   result is worth to them vs the cost; (5) an honest reason to act now (their occasion date,
+   delivery time, real limited slots only if true - never invented scarcity or fake deadlines);
+   (6) a warm CTA to message the seller now. The buyer should think "I need this, I'll message now".
+   IMAGES: call view_competitor_images to SEE page-1 thumbnails. Design an original image that is
+   impossible to ignore while scrolling: one emotional moment of the transformation (the buyer's
+   result/feeling), a 2-6 word headline readable at phone thumbnail size, max 12 supporting words,
+   high contrast, different from every competitor. Write generation_prompt and then GENERATE the
+   image with your own image tool at 1280x769 with that exact text.
+   PROOF: fill proof for every section (title, tags, category, description, packages, faq, images,
+   profile) with the real source and number it is based on. Sections without research are refused.
+   Also write the description around the buyer's problem, outcome, concrete scope, process,
    truthful proof, limitations and a Fiverr contact CTA. No invented clients, qualifications,
    guarantees, search volumes, urgency, or guaranteed sales/ranking. Label pricing as proposed
    unless directly quoting evidence; consider seller effort and category minimums.

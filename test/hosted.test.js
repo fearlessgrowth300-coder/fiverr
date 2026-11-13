@@ -59,7 +59,7 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const response=await connect({apify_token:'apify_api_test123456789',consent:true});assert.equal(response.status,200);assert.equal(response.headers.get('cache-control'),'no-store');
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
-  assert.equal((await client.listTools()).tools.length,21);
+  assert.equal((await client.listTools()).tools.length,22);
   const started=await client.callTool({name:'find_freelancers',arguments:{workspace_key:connected.workspace_key,buyer_need:'coffee shop logo'}});
   assert.equal(started.structuredContent.result.status,'RUNNING');
   const poll=()=>client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
@@ -67,6 +67,14 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const market=await client.callTool({name:'analyze_search_results',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});
   assert.equal(market.structuredContent.result.gigs_analyzed,1);assert.equal(market.structuredContent.result.first_page[0].position,1);
   assert.equal(polled.structuredContent.result.research_complete,true);
+  const tier=p=>({name:'P',description:'Scope',price_usd:p,delivery_days:2,revisions:1,deliverables:['File'],exclusions:[]});
+  const gig={profile:{about:'I help.',skills:['Design'],facts_to_confirm:[]},target_search:'logo design',traffic_terms:['design a logo'],fiverr_terms:['logo'],search_job_id:started.structuredContent.result.job_id,
+    proof:Object.fromEntries(['title','tags','category','description','packages','faq','images','profile'].map(s=>[s,[{source:'https://example.com/made-up',fact:'guess'}]])),
+    title:'I will design a logo '+'a'.repeat(65),category:'Graphics',subcategory:'Logo',category_verified:false,tags:['logo','brand','design','business','identity'],packages:{basic:tier(25),standard:tier(50),premium:tier(100)},pricing_rationale:'x',
+    description:('I design a logo for your logo design, brand, business identity. '+'x'.repeat(1200)).slice(0,1200),faq:[{question:'Q',answer:'A'}],images:[{generation_prompt:'p',headline:'Clear identity',supporting_text:'s',layout:'l',visual_concept:'v',buyer_relevance:'b',thumbnail_check:'t'}],
+    requirements:[{question:'Q',required:true,response_type:'free_text'}],buyer_hypothesis:'h',buyer_check:{real_problem:'y',seller_can_fix_it:'y',contact_now:'y',transformation:'t',value_over_price:'v',why_now:'w'},evidence:[],limitations:['l'],next_question:'q'};
+  const v=(await client.callTool({name:'validate_gig_package',arguments:{workspace_key:connected.workspace_key,gig}})).structuredContent.result;
+  assert.match(v.errors.join(' '),/proof\.title: "https:\/\/example\.com\/made-up" is not a gig/);assert.match(v.errors.join(' '),/Missing keyword_job_id/);
   assert.equal(api.calls.filter(c=>c.paid)[0].token,'apify_api_test123456789');
 });
 
