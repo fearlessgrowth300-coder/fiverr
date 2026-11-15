@@ -23,8 +23,9 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
     try {if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'Origin not allowed'});}catch{return res.status(403).json({error:'Invalid origin'});}
     next();
   };
-  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:22}));
+  app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:23}));
   app.get('/health',(_req,res)=>res.json({ok:true,service:'fiverr-gig-studio',configured:!!secret}));
+  app.get('/api/probe-suggest',async(_q,res)=>{try{const {suggestions}=await import('./src/suggest.js');const r=await suggestions('ai music video',{sources:['google','youtube']});res.json({ok:r.requests_ok,failed:r.requests_failed,total:r.total,sample:r.buyer_modifiers.slice(0,8).map(x=>x.suggestion)});}catch(e){res.json({error:e.message});}});
   app.post('/api/connect',sameOrigin,async(req,res)=>{
     const raw=req.body?.apify_tokens??[req.body?.apify_token];
     const tokens=[...new Set(Array.isArray(raw)?raw.map(t=>typeof t==='string'?t.trim():t).filter(Boolean):[])];

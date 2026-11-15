@@ -7,6 +7,7 @@ import { gigSchema, validateGig, renderGig, SECTIONS } from './validation.js';
 import { WORKFLOW, RULES } from './workflow.js';
 import { buyerKeywordIdeas } from './keywords.js';
 import { searchVolume } from './dataforseo.js';
+import { suggestions } from './suggest.js';
 
 const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
 const username = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,59}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
@@ -149,6 +150,10 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     return { fiverr_tag_directory: directory, ...await buyerKeywordIdeas(args.seed, j, undefined, tags) };
   }, { paid: true, external: true });
 
+  tool('google_suggestions', "Free AnswerThePublic-style keyword ideas: Google and YouTube autocomplete around the niche seed (for/with/vs/custom/best/how to/a-z). Shows the real phrases buyers type, e.g. 'ai music video for suno'. Run the promising ones through compare_keywords and google_search_volume. Free, no key.", {
+    workspace_key, seed: z.string().trim().min(2).max(60).refine(v => v.split(/\s+/).length <= 6, 'Use the short niche seed, e.g. "ai music video".'),
+    sources: z.array(z.enum(['google', 'youtube'])).min(1).max(2).default(['google', 'youtube']),
+  }, async args => { auth(args); return { source: 'google_autocomplete', ...await suggestions(args.seed, { sources: args.sources }) }; }, { external: true });
   tool('google_search_volume', "Real Google monthly search volume, 12-month trend (rising/steady/falling) and peak month for 1-20 buyer keywords, via the seller's own DataForSEO account (about $0.075 per call, any number of keywords). Use it for the HIGH DEMAND part of the title formula, together with compare_keywords (Fiverr competition) and page-1 reviews. Google volume is buyer interest in the service, not Fiverr's internal search count.", {
     workspace_key, keywords: z.array(z.string().trim().min(2).max(80).refine(v => v.split(/\s+/).length <= 10, 'Max 10 words.')).min(1).max(20),
     location_code: z.number().int().default(2840).describe('Google Ads location code; 2840 = United States, 2826 = UK, 2124 = Canada, 2036 = Australia.'),

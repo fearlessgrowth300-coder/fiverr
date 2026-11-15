@@ -105,7 +105,7 @@ test('MCP discovery, workflow, validation, and research work through official cl
   const client=new Client({name:'integration-test',version:'1'});
   const [ct,st]=InMemoryTransport.createLinkedPair();await server.connect(st);await client.connect(ct);
   t.after(async()=>{await client.close();await server.close();});
-  const tools=await client.listTools();assert.equal(tools.tools.length,22);
+  const tools=await client.listTools();assert.equal(tools.tools.length,23);
   for(const name of ['find_freelancers','get_freelancer_overview','get_seller_profile','get_seller_reviews_summary','list_seller_gigs','list_seller_reviews']) assert.ok(tools.tools.some(x=>x.name===name));
   const brief=await client.callTool({name:'prepare_gig_brief',arguments:{service:'Logo design'}});assert.ok(brief.structuredContent.result.instructions.includes('1200'));
   const invalid=await client.callTool({name:'find_freelancers',arguments:{workspace_key:'wrong-key-with-at-least-24-characters',buyer_need:'logo design'}});assert.equal(invalid.isError,true);
@@ -183,4 +183,15 @@ test('DataForSEO: search volume, trend and peak month parsed; errors surfaced',a
   assert.equal(r.keywords[0].google_monthly_searches,2400);assert.equal(r.keywords[0].trend,'rising');assert.equal(r.keywords[0].peak_month,'2026-11');
   const bad=async()=>({ok:true,status:200,json:async()=>({status_code:20000,tasks:[{status_code:40104,status_message:'Please verify your account'}]})});
   await assert.rejects(searchVolume({login:'a',password:'b'},['x'],2840,bad),/verify your account/);
+});
+
+test('google suggestions: merges Google + YouTube autocomplete, groups buyer phrases, tolerates failures',async()=>{
+  const { suggestions } = await import('../src/suggest.js');
+  let n=0;const f=async url=>{n++;if(n===3)return {ok:false};const yt=/ds=yt/.test(url);return {ok:true,arrayBuffer:async()=>Buffer.from(JSON.stringify(['q',[yt?'ai music video for suno':'ai music video for kids','ai music video vs animation','how to ai music video']]))};};
+  const r=await suggestions('AI music video',{fetchImpl:f});
+  assert.equal(r.requests_failed,1);assert.ok(r.requests_ok>50);
+  assert.deepEqual(r.buyer_modifiers.map(x=>x.suggestion).sort(),['ai music video for kids','ai music video for suno']);
+  assert.equal(r.comparisons[0].suggestion,'ai music video vs animation');assert.equal(r.questions[0].suggestion,'how to ai music video');
+  assert.deepEqual(r.all.find(x=>x.suggestion==='how to ai music video').sources.sort(),['google','youtube']);
+  await assert.rejects(suggestions('x y',{fetchImpl:async()=>({ok:false})}),/not reachable/);
 });

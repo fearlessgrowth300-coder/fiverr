@@ -13,6 +13,7 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    algorithm-favoured related terms. target_search = the real buyer search with low competition
    (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders, plus
    google_search_volume monthly searches and trend when the seller connected DataForSEO).
+   Call google_suggestions(seed) for free Google/YouTube autocomplete phrases (AnswerThePublic-style).
    KEYWORD LOOP (required): put every candidate - Google keywords, Fiverr search tags, seller tags,
    fiverr_recommends titles - back through compare_keywords (Fiverr competition) and
    google_search_volume (demand). Pass that job as keyword_job_id. Four keyword groups:
