@@ -10,6 +10,7 @@ export const gigSchema = z.object({
   profile: z.object({ about: text, skills: list, facts_to_confirm: z.array(text).max(30) }),
   target_search: text.max(60).describe('TITLE FORMULA part 1: the low-competition + high-demand buyer search this gig should rank for (from compare_keywords), e.g. "ai music video for birthday".'),
   keyword_job_id: z.string().uuid().optional().describe('compare_keywords job_id in which target_search, traffic_terms and fiverr_terms were checked on Fiverr.'),
+  google_phrases: z.array(text.max(60)).max(5).default([]).describe('1-5 real phrases from google_suggestions (Google/YouTube autocomplete) that fit this gig, e.g. "ai music video with lip sync". Used in title, tags and description.'),
   fiverr_terms: z.array(text.max(40)).max(5).default([]).describe('Fiverr algorithm-favoured terms: most used tags/title words among ranking gigs, Fiverr search-tag directory, gigs Fiverr recommends. Must appear in the description.'),
   proof: z.object(Object.fromEntries(SECTIONS.map(s => [s, proofList]))).describe('For EVERY section, the research facts it is built on (source + real number/observation). No guessing.'),
   traffic_terms: z.array(text.max(40)).max(4).default([]).describe('TITLE FORMULA part 2: 1-4 high-traffic, algorithm-favoured related terms combined into the title (most used in page-1 titles/tags and Fiverr search tags, e.g. "music video", "lyric video").'),
@@ -43,10 +44,16 @@ export function validateGig(input) {
   const words = s => s.toLowerCase().match(/[\p{L}\p{N}]+/gu) || [];
   if (!g.traffic_terms.length) errors.push('Title formula: low competition + high demand + high-traffic related terms. Add traffic_terms: 1-4 high-traffic, algorithm-favoured related terms and combine them into the title with target_search.');
   for (const t of g.traffic_terms) { const m = words(t).filter(x => !tw.has(x) && !tw.has(x + 's')); if (m.length) errors.push(`Title must combine the high-traffic term "${t}" (missing: ${m.join(', ')}).`); }
+  if (!g.google_phrases.length) errors.push('Add google_phrases: 1-5 real buyer phrases from google_suggestions, and use them in the title, tags and description.');
+  else {
+    const inTitle = p => words(p).every(x => tw.has(x) || tw.has(x + 's')), tagHit = p => g.tags.some(t => p.toLowerCase().includes(t.toLowerCase()) || t.toLowerCase().includes(p.toLowerCase()));
+    if (!g.google_phrases.some(inTitle)) errors.push(`Title must contain at least one Google phrase (${g.google_phrases.join(', ')}).`);
+    if (!g.google_phrases.some(tagHit)) errors.push('At least one tag must be (part of) a Google phrase.');
+  }
   if (!g.fiverr_terms.length) errors.push('Add fiverr_terms: 1-5 Fiverr algorithm-favoured terms (most used tags/title words among ranking gigs).');
   const dl = g.description.toLowerCase(), dw = new Set(words(g.description));
   if (!dl.includes(g.target_search.toLowerCase())) errors.push(`Description must contain the exact low-competition, high-demand keyword "${g.target_search}".`);
-  for (const [kind, list] of [['high-traffic', g.traffic_terms], ['Fiverr-favoured', g.fiverr_terms], ['tag', g.tags]]) for (const t of list) { const m = words(t).filter(x => !dw.has(x) && !dw.has(x + 's')); if (m.length) errors.push(`Description must include the ${kind} keyword "${t}" (missing: ${m.join(', ')}).`); }
+  for (const [kind, list] of [['high-traffic', g.traffic_terms], ['Fiverr-favoured', g.fiverr_terms], ['Google', g.google_phrases], ['tag', g.tags]]) for (const t of list) { const m = words(t).filter(x => !dw.has(x) && !dw.has(x + 's')); if (m.length) errors.push(`Description must include the ${kind} keyword "${t}" (missing: ${m.join(', ')}).`); }
   g.images.forEach((im, i) => { if (words(im.headline).length > 6) errors.push(`Image ${i + 1} headline must be 6 words or fewer to read while scrolling.`); if (words(im.supporting_text).length > 12) errors.push(`Image ${i + 1} supporting text must be 12 words or fewer.`); });
   if (!g.tags.some(t => t.toLowerCase().includes(g.target_search.toLowerCase()))) warnings.push('No tag contains the exact target search phrase.');
   if (/[&/"+\r\n]/.test(g.title)) errors.push('Title contains unsupported punctuation or a newline.');
@@ -66,7 +73,7 @@ export function validateGig(input) {
 }
 
 export function renderGig(g) {
-  const lines = ['# Fiverr gig package', '', '## Profile', g.profile.about, '', `Skills: ${g.profile.skills.join(', ')}`, '', 'Confirm: ' + (g.profile.facts_to_confirm.join('; ') || 'No unresolved profile facts supplied.'), '', '## Title', g.title, '', `Paste after Fiverr's I will prefix: ${g.title.slice(7)}`, '', `Category: ${g.category} > ${g.subcategory}${g.category_verified ? '' : ' (confirm in editor)'}`, '', ...(g.service_options.length ? ['Service options to tick: ' + g.service_options.map(o => `${o.option}: ${o.values.join(', ')}`).join(' | '), ''] : []), `Title formula: ${g.target_search} (low competition, high demand) + ${g.traffic_terms.join(', ')} (high traffic)`, '', `Tags: ${g.tags.join(' | ')}`, '', '## Packages'];
+  const lines = ['# Fiverr gig package', '', '## Profile', g.profile.about, '', `Skills: ${g.profile.skills.join(', ')}`, '', 'Confirm: ' + (g.profile.facts_to_confirm.join('; ') || 'No unresolved profile facts supplied.'), '', '## Title', g.title, '', `Paste after Fiverr's I will prefix: ${g.title.slice(7)}`, '', `Category: ${g.category} > ${g.subcategory}${g.category_verified ? '' : ' (confirm in editor)'}`, '', ...(g.service_options.length ? ['Service options to tick: ' + g.service_options.map(o => `${o.option}: ${o.values.join(', ')}`).join(' | '), ''] : []), `Title formula: ${g.target_search} (low competition, high demand) + ${g.traffic_terms.join(', ')} (high traffic)`, '', `Google phrases used: ${g.google_phrases.join(', ')}`, '', `Tags: ${g.tags.join(' | ')}`, '', '## Packages'];
   for (const [key, p] of Object.entries(g.packages)) lines.push('', `### ${key.toUpperCase()} — ${p.name} — $${p.price_usd} USD`, p.description, '', `${p.delivery_days} days; ${p.revisions} revisions`, '', ...p.deliverables.map(x => `- ${x}`), '', `Excludes: ${p.exclusions.join('; ') || 'None specified'}`);
   lines.push('', `Pricing rationale: ${g.pricing_rationale}`, '', '## Description', g.description, '', '## FAQ');
   for (const f of g.faq) lines.push('', `**${f.question}**`, f.answer);

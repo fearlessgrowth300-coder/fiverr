@@ -36,11 +36,11 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     const errs = cited < need ? [`Cite at least ${need} gigs from research job ${j.id} in evidence (source_url from find_freelancers results). Web-search sources do not count.`] : [];
     const urls = new Set(j.rows.map(r => r.source_url).filter(Boolean)), tools = /^(compare_keywords|google_search_volume|analyze_search_results|fiverr_recommends|deep_dive_competitors|list_seller_reviews|list_seller_gigs|buyer_keyword_ideas)$/;
     for (const s of SECTIONS) for (const p of g.proof[s]) if (!tools.test(p.source) && !urls.has(fiverrUrl(p.source) || p.source)) errs.push(`proof.${s}: "${p.source.slice(0, 80)}" is not a gig from research job ${j.id} or a Gig Studio tool. Use real research only.`);
-    if (!g.keyword_job_id) errs.push('Missing keyword_job_id: check target_search, traffic_terms and fiverr_terms on Fiverr with compare_keywords (competition), and google_search_volume (demand) if connected.');
+    if (!g.keyword_job_id) errs.push('Missing keyword_job_id: check target_search, traffic_terms, google_phrases and fiverr_terms on Fiverr with compare_keywords (competition), and google_search_volume (demand) if connected.');
     else {
       let k; try { k = await loadJob(w, g.keyword_job_id); } catch {}
       if (!k || k.owner !== w.owner || k.mode !== 'compare' || !k.rows) errs.push('keyword_job_id must be a finished compare_keywords job in this workspace.');
-      else { const checked = new Set(k.rows.map(r => (r.search_query || '').toLowerCase())); const unchecked = [g.target_search, ...g.traffic_terms, ...g.fiverr_terms].filter(t => !checked.has(t.toLowerCase())); if (unchecked.length) errs.push(`Check these keywords on Fiverr with compare_keywords first (competition): ${unchecked.join(', ')}.`); }
+      else { const checked = new Set(k.rows.map(r => (r.search_query || '').toLowerCase())); const unchecked = [g.target_search, ...g.traffic_terms, ...g.google_phrases, ...g.fiverr_terms].filter(t => !checked.has(t.toLowerCase())); if (unchecked.length) errs.push(`Check these keywords on Fiverr with compare_keywords first (competition): ${unchecked.join(', ')}.`); }
     }
     if (research.readThrough) {
       const total = viewJob(j, 'gigs', undefined, 0, 1).total_in_snapshot, read = await research.readThrough(w, j.id);

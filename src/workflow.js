@@ -14,6 +14,8 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    (few total_results, weak page 1) AND high demand (page-1 gigs earning reviews/orders, plus
    google_search_volume monthly searches and trend when the seller connected DataForSEO).
    Call google_suggestions(seed) for free Google/YouTube autocomplete phrases (AnswerThePublic-style).
+   Pick 1-5 that fit as google_phrases: they MUST appear in the title (at least one), the tags
+   (at least one) and the description (all), after passing the keyword loop below.
    KEYWORD LOOP (required): put every candidate - Google keywords, Fiverr search tags, seller tags,
    fiverr_recommends titles - back through compare_keywords (Fiverr competition) and
    google_search_volume (demand). Pass that job as keyword_job_id. Four keyword groups:

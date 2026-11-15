@@ -68,7 +68,7 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   assert.equal(market.structuredContent.result.gigs_analyzed,1);assert.equal(market.structuredContent.result.first_page[0].position,1);
   assert.equal(polled.structuredContent.result.research_complete,true);
   const tier=p=>({name:'P',description:'Scope',price_usd:p,delivery_days:2,revisions:1,deliverables:['File'],exclusions:[]});
-  const gig={profile:{about:'I help.',skills:['Design'],facts_to_confirm:[]},target_search:'logo design',traffic_terms:['design a logo'],fiverr_terms:['logo'],search_job_id:started.structuredContent.result.job_id,
+  const gig={profile:{about:'I help.',skills:['Design'],facts_to_confirm:[]},target_search:'logo design',traffic_terms:['design a logo'],google_phrases:['logo design'],fiverr_terms:['logo'],search_job_id:started.structuredContent.result.job_id,
     proof:Object.fromEntries(['title','tags','category','description','packages','faq','images','profile'].map(s=>[s,[{source:'https://example.com/made-up',fact:'guess'}]])),
     title:'I will design a logo '+'a'.repeat(65),category:'Graphics',subcategory:'Logo',category_verified:false,tags:['logo','brand','design','business','identity'],packages:{basic:tier(25),standard:tier(50),premium:tier(100)},pricing_rationale:'x',
     description:('I design a logo for your logo design, brand, business identity. '+'x'.repeat(1200)).slice(0,1200),faq:[{question:'Q',answer:'A'}],images:[{generation_prompt:'p',headline:'Clear identity',supporting_text:'s',layout:'l',visual_concept:'v',buyer_relevance:'b',thumbnail_check:'t'}],
