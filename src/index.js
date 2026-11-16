@@ -1,9 +1,9 @@
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import express from 'express';
-import { createMcpExpressApp } from '@modelcontextprotocol/sdk/server/express.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { createMcpExpressApp } from '@modelcontextprotocol/express';
+import { NodeStreamableHTTPServerTransport as StreamableHTTPServerTransport } from '@modelcontextprotocol/node';
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio';
 import { Apify } from './apify.js';
 import { Store, loadWorkspaces } from './storage.js';
 import { Research } from './research.js';

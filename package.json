@@ -15,7 +15,10 @@
     "local": "node --env-file-if-exists=.env src/index.js"
   },
   "dependencies": {
+    "@modelcontextprotocol/express": "^2.0.2",
+    "@modelcontextprotocol/node": "^2.1.2",
     "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server": "^2.4.0",
     "express": "^5.1.0",
     "zod": "4.6.7"
   }

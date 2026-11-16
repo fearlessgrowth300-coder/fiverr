@@ -1,6 +1,7 @@
 import express from 'express';
 import { fileURLToPath } from 'node:url';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { toNodeHandler } from '@modelcontextprotocol/node';
+import { createMcpHandler } from '@modelcontextprotocol/server';
 import { Apify } from './src/apify.js';
 import { Credentials } from './src/credentials.js';
 import { HostedResearch } from './src/hosted-research.js';
@@ -55,10 +56,10 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
   app.post(['/mcp','/mcp/:key'],async(req,res)=>{
     const origin=req.get('origin');
     if(origin&&!['https://chatgpt.com','https://claude.ai',`https://${req.get('host')}`,`http://${req.get('host')}`].includes(origin))return res.status(403).json({error:'Origin not allowed'});
-    const server=createServer({research,apify,fiverr,urlKey:req.params?.key||req.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1],authenticate:key=>creds().read(key)});
-    const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
-    res.on('close',()=>{void transport.close();void server.close();});
-    try {await server.connect(transport);await transport.handleRequest(req,res,req.body);}
+    const urlKey=req.params?.key||req.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1];
+    // Serves MCP 2026-07-28 (server/discover, what ChatGPT now speaks) and 2025-era clients statelessly.
+    const handler=createMcpHandler(()=>createServer({research,apify,fiverr,urlKey,authenticate:key=>creds().read(key)}),{legacy:'stateless'});
+    try {await toNodeHandler(handler)(req,res,req.body);}
     catch {if(!res.headersSent)res.status(500).json({jsonrpc:'2.0',id:null,error:{code:-32603,message:'MCP request failed'}});}
   });
   app.all(['/mcp','/mcp/:key'],(_req,res)=>res.status(405).set('Allow','POST').end());
