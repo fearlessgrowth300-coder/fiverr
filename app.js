@@ -15,6 +15,9 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
     if(req.path!=='/'&&!req.path.endsWith('.css')&&!req.path.endsWith('.js'))res.set('Cache-Control','no-store');
     next();
   });
+  // TEMP debug ring buffer (no secrets): what ChatGPT calls during connector discovery.
+  const dbg=[];app.use((req,res,next)=>{const t=Date.now();res.on('finish',()=>{dbg.push({at:new Date(t).toISOString(),m:req.method,p:req.path.slice(0,40),q:Object.keys(req.query||{}).join(','),s:res.statusCode,ms:Date.now()-t,rpc:req.body?.method,auth:req.get('authorization')?req.get('authorization').split(' ')[0]+' len'+req.get('authorization').length:'',acc:req.get('accept'),ct:req.get('content-type'),o:req.get('origin'),ua:(req.get('user-agent')||'').slice(0,60),pv:req.get('mcp-protocol-version')});if(dbg.length>80)dbg.shift();});next();});
+  app.get('/api/debug-log-7f3k',(_q,res)=>res.json(dbg));
   app.use(express.json({limit:'192kb'}));
   const creds=()=>new Credentials(secret);
   const research=new HostedResearch(apify);
