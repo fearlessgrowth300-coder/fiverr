@@ -60,6 +60,23 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
   assert.equal((await client.listTools()).tools.length,23);
+  // OAuth sign-in: ChatGPT registers, user pastes the key once, ChatGPT gets it as a bearer token.
+  const meta=await (await fetch(base+'/.well-known/oauth-authorization-server')).json();assert.equal(meta.token_endpoint,base+'/oauth/token');
+  assert.equal((await (await fetch(base+'/.well-known/oauth-protected-resource')).json()).resource,base+'/mcp');
+  const cb='https://chatgpt.com/connector_platform_oauth_redirect';
+  const reg=await (await fetch(base+'/oauth/register',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({redirect_uris:[cb],client_name:'ChatGPT'})})).json();
+  const {createHash,randomBytes:rb}=await import('node:crypto');const verifier=rb(32).toString('base64url'),challenge=createHash('sha256').update(verifier).digest('base64url');
+  const q={response_type:'code',client_id:reg.client_id,redirect_uri:cb,state:'st1',code_challenge:challenge,code_challenge_method:'S256'};
+  assert.equal((await fetch(base+'/oauth/authorize?'+new URLSearchParams(q))).status,200);
+  const wrong=await fetch(base+'/oauth/authorize',{method:'POST',redirect:'manual',body:new URLSearchParams({...q,workspace_key:'fgs1.nope-nope-nope-nope-nope'})});assert.equal(wrong.status,400);
+  const ok=await fetch(base+'/oauth/authorize',{method:'POST',redirect:'manual',body:new URLSearchParams({...q,workspace_key:connected.workspace_key})});
+  assert.equal(ok.status,302);const back=new URL(ok.headers.get('location'));assert.equal(back.origin+back.pathname,cb);assert.equal(back.searchParams.get('state'),'st1');
+  const tokenReq=v=>fetch(base+'/oauth/token',{method:'POST',body:new URLSearchParams({grant_type:'authorization_code',code:back.searchParams.get('code'),redirect_uri:cb,client_id:reg.client_id,code_verifier:v})});
+  assert.equal((await tokenReq('wrong-verifier')).status,400);
+  const tok=await (await tokenReq(verifier)).json();assert.equal(tok.access_token,connected.workspace_key);
+  const ref=await (await fetch(base+'/oauth/token',{method:'POST',body:new URLSearchParams({grant_type:'refresh_token',refresh_token:tok.refresh_token})})).json();assert.equal(ref.access_token,connected.workspace_key);
+  const bearer=new Client({name:'oauth',version:'1'});await bearer.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp'),{requestInit:{headers:{authorization:'Bearer '+tok.access_token}}}));t.after(()=>bearer.close());
+  assert.doesNotMatch(JSON.stringify((await bearer.callTool({name:'list_research_jobs',arguments:{}})).content),/workspace key|Workspace key/i);
   const linked=new Client({name:'link',version:'1'});await linked.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp/'+connected.workspace_key)));t.after(()=>linked.close());
   const keyOk=r=>assert.doesNotMatch(JSON.stringify(r.content),/workspace key|Workspace key/i);
   keyOk(await linked.callTool({name:'list_research_jobs',arguments:{}})); // key from the link, none in the call

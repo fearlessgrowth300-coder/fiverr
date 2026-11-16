@@ -6,6 +6,7 @@ import { Credentials } from './src/credentials.js';
 import { HostedResearch } from './src/hosted-research.js';
 import { createServer } from './src/server.js';
 import { FiverrMcp } from './src/fiverr-mcp.js';
+import { oauthRoutes } from './src/oauth.js';
 
 export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTION_KEY,fiverr=new FiverrMcp()}={}) {
   const app=express();app.disable('x-powered-by');
@@ -23,6 +24,7 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
     try {if(new URL(origin).host!==req.get('host'))return res.status(403).json({error:'Origin not allowed'});}catch{return res.status(403).json({error:'Invalid origin'});}
     next();
   };
+  if(secret)oauthRoutes(app,{secret,readKey:k=>creds().read(k)});
   app.get('/api/status',(_req,res)=>res.json({ready:!!secret,tools:23}));
   app.get('/health',(_req,res)=>res.json({ok:true,service:'fiverr-gig-studio',configured:!!secret}));
   app.post('/api/connect',sameOrigin,async(req,res)=>{
@@ -50,7 +52,7 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
   app.post(['/mcp','/mcp/:key'],async(req,res)=>{
     const origin=req.get('origin');
     if(origin&&!['https://chatgpt.com','https://claude.ai',`https://${req.get('host')}`,`http://${req.get('host')}`].includes(origin))return res.status(403).json({error:'Origin not allowed'});
-    const server=createServer({research,apify,fiverr,urlKey:req.params?.key,authenticate:key=>creds().read(key)});
+    const server=createServer({research,apify,fiverr,urlKey:req.params?.key||req.get('authorization')?.match(/^Bearer\s+(\S+)$/i)?.[1],authenticate:key=>creds().read(key)});
     const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
     res.on('close',()=>{void transport.close();void server.close();});
     try {await server.connect(transport);await transport.handleRequest(req,res,req.body);}
