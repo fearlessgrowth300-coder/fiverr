@@ -98,7 +98,7 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
     description:('I design a logo for your logo design, brand, business identity. '+'x'.repeat(1200)).slice(0,1200),faq:[{question:'Q',answer:'A'}],images:[{generation_prompt:'p',headline:'Clear identity',supporting_text:'s',layout:'l',visual_concept:'v',buyer_relevance:'b',thumbnail_check:'t'}],
     requirements:[{question:'Q',required:true,response_type:'free_text'}],buyer_hypothesis:'h',buyer_check:{real_problem:'y',seller_can_fix_it:'y',contact_now:'y',transformation:'t',value_over_price:'v',why_now:'w'},evidence:[],limitations:['l'],next_question:'q'};
   const v=(await client.callTool({name:'validate_gig_package',arguments:{workspace_key:connected.workspace_key,gig}})).structuredContent.result;
-  assert.match(v.errors.join(' '),/proof\.title: "https:\/\/example\.com\/made-up" is not a gig/);assert.match(v.errors.join(' '),/Missing keyword_job_id/);
+  assert.match(v.errors.join(' '),/proof\.title: "https:\/\/example\.com\/made-up" is not a gig/);assert.match(v.errors.join(' '),/Missing keyword_job_id/);assert.match(v.errors.join(' '),/Call google_suggestions/);
   assert.equal(api.calls.filter(c=>c.paid)[0].token,'apify_api_test123456789');
 });
 

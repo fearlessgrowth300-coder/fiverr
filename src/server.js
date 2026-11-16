@@ -34,8 +34,11 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     const gigs = j.rows.filter(r => r.kind === 'gig').length, need = Math.min(5, gigs);
     const cited = new Set(g.evidence.filter(e => e.job_id === j.id).map(e => e.source_url)).size;
     const errs = cited < need ? [`Cite at least ${need} gigs from research job ${j.id} in evidence (source_url from find_freelancers results). Web-search sources do not count.`] : [];
-    const urls = new Set(j.rows.map(r => r.source_url).filter(Boolean)), tools = /^(compare_keywords|google_search_volume|analyze_search_results|fiverr_recommends|deep_dive_competitors|list_seller_reviews|list_seller_gigs|buyer_keyword_ideas)$/;
+    const urls = new Set(j.rows.map(r => r.source_url).filter(Boolean)), tools = /^(compare_keywords|google_search_volume|analyze_search_results|fiverr_recommends|deep_dive_competitors|list_seller_reviews|list_seller_gigs|buyer_keyword_ideas|google_suggestions)$/;
     for (const s of SECTIONS) for (const p of g.proof[s]) if (!tools.test(p.source) && !urls.has(fiverrUrl(p.source) || p.source)) errs.push(`proof.${s}: "${p.source.slice(0, 80)}" is not a gig from research job ${j.id} or a Gig Studio tool. Use real research only.`);
+    const usedTool = t => SECTIONS.some(s => g.proof[s].some(p => p.source === t));
+    if (!usedTool('google_suggestions')) errs.push('Call google_suggestions(seed) and cite it in proof (source "google_suggestions") for the Google phrases used in the title, tags and description.');
+    if (w.dfs && !usedTool('google_search_volume')) errs.push('DataForSEO is connected: call google_search_volume on the target_search, traffic_terms and google_phrases, and cite it in proof (source "google_search_volume") with the real monthly searches.');
     if (!g.keyword_job_id) errs.push('Missing keyword_job_id: check target_search, traffic_terms, google_phrases and fiverr_terms on Fiverr with compare_keywords (competition), and google_search_volume (demand) if connected.');
     else {
       let k; try { k = await loadJob(w, g.keyword_job_id); } catch {}
