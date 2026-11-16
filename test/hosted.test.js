@@ -60,6 +60,13 @@ test('web connect consent, isolation and hosted MCP roundtrip',async t=>{
   const connected=await response.json();assert.ok(connected.workspace_key.startsWith('fgs1.'));
   const client=new Client({name:'hosted-test',version:'1'});await client.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp')));t.after(()=>client.close());
   assert.equal((await client.listTools()).tools.length,23);
+  const linked=new Client({name:'link',version:'1'});await linked.connect(new StreamableHTTPClientTransport(new URL(base+'/mcp/'+connected.workspace_key)));t.after(()=>linked.close());
+  const keyOk=r=>assert.doesNotMatch(JSON.stringify(r.content),/workspace key|Workspace key/i);
+  keyOk(await linked.callTool({name:'list_research_jobs',arguments:{}})); // key from the link, none in the call
+  keyOk(await linked.callTool({name:'list_research_jobs',arguments:{workspace_key:'fgs1.garbled-by-the-ai-xxxxxxxx'}})); // link wins over a mangled copy
+  keyOk(await client.callTool({name:'list_research_jobs',arguments:{workspace_key:' '+connected.workspace_key.slice(0,40)+'\n'+connected.workspace_key.slice(40)+' '}})); // whitespace from copying is ignored
+  const bad=await client.callTool({name:'list_research_jobs',arguments:{workspace_key:connected.workspace_key.slice(0,-6)+'zzzzzz'}});
+  assert.match(bad.content[0].text,/one wrong character breaks it/);
   const started=await client.callTool({name:'find_freelancers',arguments:{workspace_key:connected.workspace_key,buyer_need:'coffee shop logo'}});
   assert.equal(started.structuredContent.result.status,'RUNNING');
   const poll=()=>client.callTool({name:'get_research_job',arguments:{workspace_key:connected.workspace_key,job_id:started.structuredContent.result.job_id}});

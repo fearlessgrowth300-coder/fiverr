@@ -46,16 +46,17 @@ export function makeApp({apify=new Apify(),secret=process.env.WORKSPACE_ENCRYPTI
       res.json({workspace_key:key,expires_in_days:90,account:accounts.map(a=>a.username||'account').join(', '),keys:accounts.length,dataforseo:!!dl});
     }catch(e){res.status(e.status===401?401:400).json({error:e.message.startsWith('WORKSPACE_')?'Workspace setup is not enabled yet. Contact the site owner.':e.message});}
   });
-  app.post('/mcp',async(req,res)=>{
+  // /mcp/<workspace key>: the key lives in the connector link, so the AI never has to retype it.
+  app.post(['/mcp','/mcp/:key'],async(req,res)=>{
     const origin=req.get('origin');
     if(origin&&!['https://chatgpt.com','https://claude.ai',`https://${req.get('host')}`,`http://${req.get('host')}`].includes(origin))return res.status(403).json({error:'Origin not allowed'});
-    const server=createServer({research,apify,fiverr,authenticate:key=>creds().read(key)});
+    const server=createServer({research,apify,fiverr,urlKey:req.params?.key,authenticate:key=>creds().read(key)});
     const transport=new StreamableHTTPServerTransport({sessionIdGenerator:undefined,enableJsonResponse:true});
     res.on('close',()=>{void transport.close();void server.close();});
     try {await server.connect(transport);await transport.handleRequest(req,res,req.body);}
     catch {if(!res.headersSent)res.status(500).json({jsonrpc:'2.0',id:null,error:{code:-32603,message:'MCP request failed'}});}
   });
-  app.all('/mcp',(_req,res)=>res.status(405).set('Allow','POST').end());
+  app.all(['/mcp','/mcp/:key'],(_req,res)=>res.status(405).set('Allow','POST').end());
   app.use(express.static(fileURLToPath(new URL('./public',import.meta.url))));
   app.use((error,_req,res,_next)=>res.status(error.type==='entity.too.large'?413:400).json({error:'Request could not be processed.'}));
   return app;

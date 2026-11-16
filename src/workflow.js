@@ -52,7 +52,8 @@ KEYWORDS: the user's service is only the NICHE SEED, not the final keyword. Afte
    If it returns 0 gigs, retry with shorter/different keywords; do not silently fall back to web
    browsing. Never send the full chat,
    unrelated topics, credentials, private client details, or the workspace key to Apify.
-   Always include workspace_key in research tool calls. It is an access secret, not an Apify token.
+   If the connector link contains the key (/mcp/fgs1...), leave workspace_key empty. Otherwise
+   include it copied EXACTLY. It is an access secret, not an Apify token.
 4. Discover relevant Fiverr actors with discover_research_actors. Use inspected adapters that
    fit the missing evidence. Do not run every actor: prefer a small representative sample,
    avoid duplicate costs, and respect run limits. A running job is not evidence: poll

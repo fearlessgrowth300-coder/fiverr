@@ -9,14 +9,14 @@ import { buyerKeywordIdeas } from './keywords.js';
 import { searchVolume } from './dataforseo.js';
 import { suggestions } from './suggest.js';
 
-const workspace_key = z.string().min(24).max(8192).describe('Your private workspace key from the Fiverr Gig Studio website, NOT a raw Apify token.');
+const workspace_key = z.string().max(8192).optional().describe('Leave EMPTY when the connector link already contains the key (/mcp/fgs1...). Otherwise the private workspace key from the website, copied exactly. Never a raw Apify token.');
 const username = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]{1,59}$/).describe('Exact known Fiverr username. Discover sellers with find_freelancers first.');
 const adapter = z.enum(['memo23','logiover','dionysus','vexaloom']).default('memo23');
 const pagination = { job_id: z.string().uuid().optional(), offset: z.number().int().min(0).max(10000).default(0), limit: z.number().int().min(1).max(50).default(10) };
 const outputSchema = { result: z.record(z.string(), z.unknown()) };
 const result = data => ({ content: [{ type: 'text', text: JSON.stringify(data) }], structuredContent: { result: data } });
 export const NO_WEB = 'RULE: Use ONLY data returned by Gig Studio tools for competitors, titles, tags, prices and reviews. Do NOT use web search, browsing, fiverr.com pages or your own memory for market data. finalize_gig_package refuses any gig that is not built on a finished Gig Studio research job. While research runs (10-20 min) tell the user it is running and keep polling get_research_job.';
-export function createServer({ workspaces, research, apify, authenticate, fiverr }) {
+export function createServer({ workspaces, research, apify, authenticate, fiverr, urlKey }) {
   const server = new McpServer({ name: 'fiverr-gig-studio', version: '0.1.0' }, { instructions: WORKFLOW });
   const tool = (name, description, inputSchema, handler, { paid = false, external = false } = {}) => server.registerTool(name, {
     title: name.split('_').join(' '), description, inputSchema, outputSchema,
@@ -49,7 +49,11 @@ export function createServer({ workspaces, research, apify, authenticate, fiverr
     return errs;
   };
   const rank = async (w, g) => { let j = null; if (g.search_job_id && research.job) { try { j = await research.job(w, g.search_job_id); } catch {} } return scoreDraft(g, j); };
-  const auth = args => authenticate ? authenticate(args.workspace_key) : authorize(args.workspace_key, workspaces);
+  const auth = args => {
+    const key = (urlKey || args.workspace_key || '').replace(/[\s"'`<>]/g, '');
+    if (!key) throw new Error('No workspace key. Use your personal connector link from the Gig Studio website (it ends with /mcp/fgs1...).');
+    return authenticate ? authenticate(key) : authorize(key, workspaces);
+  };
 
   tool('prepare_gig_brief', NO_WEB + ' Start here for creating a Fiverr gig, seller profile about text or skills. Returns the buyer-perspective workflow and complete output requirements. ChatGPT/Claude writes the draft after research.', {
     service: z.string().trim().min(3).max(500), seller_facts: z.array(z.string().max(300)).max(20).default([]), known_constraints: z.array(z.string().max(300)).max(20).default([]),

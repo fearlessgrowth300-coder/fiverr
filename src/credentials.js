@@ -19,6 +19,6 @@ export class Credentials {
       const p=JSON.parse(Buffer.concat([decipher.update(buf.subarray(28)),decipher.final()]).toString('utf8'));
       if(!p.token || !p.userId || !p.storeId || !Number.isFinite(p.exp) || p.exp<=now) throw new Error();
       return {...p,owner:createHash('sha256').update(p.userId).digest('hex')};
-    } catch {throw new Error('Workspace key is invalid or expired. Reconnect your Apify account on the website.');}
+    } catch {throw new Error(`Workspace key is invalid or expired (received ${String(value).length} characters starting "${String(value).slice(0,9)}"). If it was copied by the AI, one wrong character breaks it: use the personal connector link from the website instead. Otherwise reconnect on the website.`);}
   }
 }
